@@ -7,7 +7,48 @@ MIT License
 import numpy as np
 
 
-def add_comments(lammps_in, lammps_ref):
+def reformat(lammps_in, lammps_out, lammps_ref):
+    """
+    Reformats the LAMMPS file to replace the style that might have been removed during polymatic
+    """
+    
+    with open(lammps_in, "r", encoding="utf-8") as file:
+        lines = file.readlines()
+
+    for i, line in enumerate(lines):
+
+        stripped = line.strip()
+        columns = stripped.split()
+
+        if stripped.startswith("Masses"):
+            preamble = lines[:i]
+        
+        if stripped.startswith("Atoms"):
+            postamble = lines[i:]
+            break
+
+    with open(lammps_ref, "r", encoding="utf-8") as file:
+        lines = file.readlines()
+    
+    for i, line in enumerate(lines):
+
+        stripped = line.strip()
+        columns = stripped.split()
+
+        if stripped.startswith("Masses"):
+            data_start = i + 1
+
+        if stripped.startswith("Atoms"):
+            data_end = i - 1
+            break
+
+    midamble = lines[data_start:data_end]
+
+    with open(lammps_out, "w", encoding="utf-8") as file:
+        file.writelines(preamble)
+        file.writelines(midamble)
+        file.writelines(postamble)
+
     return
 
 
@@ -69,9 +110,9 @@ def reorder_sections(lammps_in, lammps_out):
     sorted_atom_lines = [atom_lines[i] for i in sorted_atom_idx]
     sorted_vel_lines = [vel_lines[i] for i in sorted_vel_idx]
 
-    with open(lammps_out, "w", encoding="utf-8") as f:
-        f.writelines(pre_atom)
-        f.writelines(sorted_atom_lines)
-        f.writelines(between_sections)
-        f.writelines(sorted_vel_lines)
-        f.writelines(post_vel)
+    with open(lammps_out, "w", encoding="utf-8") as file:
+        file.writelines(pre_atom)
+        file.writelines(sorted_atom_lines)
+        file.writelines(between_sections)
+        file.writelines(sorted_vel_lines)
+        file.writelines(post_vel)
