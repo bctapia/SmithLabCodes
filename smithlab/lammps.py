@@ -11,7 +11,7 @@ def reformat(lammps_in, lammps_out, lammps_ref):
     """
     Reformats the LAMMPS file to replace the style that might have been removed during polymatic
     """
-    
+
     with open(lammps_in, "r", encoding="utf-8") as file:
         lines = file.readlines()
 
@@ -22,24 +22,24 @@ def reformat(lammps_in, lammps_out, lammps_ref):
 
         if stripped.startswith("Masses"):
             preamble = lines[:i]
-        
+
         if stripped.startswith("Atoms"):
             postamble = lines[i:]
             break
 
     with open(lammps_ref, "r", encoding="utf-8") as file:
         lines = file.readlines()
-    
+
     for i, line in enumerate(lines):
 
         stripped = line.strip()
         columns = stripped.split()
 
         if stripped.startswith("Masses"):
-            data_start = i + 1
+            data_start = i
 
         if stripped.startswith("Atoms"):
-            data_end = i - 1
+            data_end = i
             break
 
     midamble = lines[data_start:data_end]
@@ -78,26 +78,31 @@ def reorder_sections(lammps_in, lammps_out):
 
         if stripped.startswith("Atoms"):
             in_atoms = True
-            pre_atom = lines[: i + 2]
+            pre_atom = lines[: i + 1]
             continue
 
         if in_atoms and not atom_section_done:
-            if not columns or columns[0].isalpha():
+
+            if not columns:
+                continue
+
+            if columns[0].isalpha():
                 in_atoms = False
                 atom_section_done = True
                 between_start = i
+
+                if stripped.startswith("Velocities"):
+                    in_velocities = True
+                    between_sections = lines[between_start : i + 1]
                 continue
+
             atom_index.append(int(columns[0]))
             atom_lines.append(line)
-            continue
-
-        if atom_section_done and stripped.startswith("Velocities"):
-            in_velocities = True
-            between_sections = lines[between_start : i + 2]
-            continue
 
         if in_velocities:
-            if not columns or columns[0].isalpha():
+            if not columns:
+                continue
+            if columns[0].isalpha():
                 post_vel = lines[i:]
                 break
             vel_index.append(int(columns[0]))
@@ -112,7 +117,46 @@ def reorder_sections(lammps_in, lammps_out):
 
     with open(lammps_out, "w", encoding="utf-8") as file:
         file.writelines(pre_atom)
+        file.writelines("\n")
         file.writelines(sorted_atom_lines)
+        file.writelines("\n")
         file.writelines(between_sections)
+        file.writelines("\n")
         file.writelines(sorted_vel_lines)
+        file.writelines("\n")
         file.writelines(post_vel)
+
+
+def setup_lammps(lammps_in, lammps_out, lammps_ref):
+    reformat(lammps_in, lammps_out, lammps_ref)
+    reorder_sections(lammps_out, lammps_out)
+
+
+def polym_stats(lammps_in):
+
+    in_atoms = False
+    molecule_num = np.array([])
+
+    with open(lammps_in, "r", encoding="utf-8") as file:
+        lines = file.readlines()
+
+    for i, line in enumerate(lines):
+
+        stripped = line.strip()
+        columns = stripped.split()
+
+        if not columns:
+            continue
+
+        if stripped.startswith("Atoms"):
+            in_atoms = True
+
+        if in_atoms and columns[0].isalpha:
+            break
+
+        if in_atoms:
+            molecule_num = np.append(molecule_num, columns[2])
+
+    molecule, count = np.unique(molecule_num, return_counts=True)
+
+    return molecule, count

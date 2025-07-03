@@ -36,8 +36,10 @@ dev = ["pytest", "black", "build", "twine"]
 [tool.setuptools]
 include-package-data = true
 
-# [tool.setuptools.package-data]
-# "pyDMS.images" = ["*.png"]
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["smithlab*"]
+exclude = ["Scripts*", "deprecation*"]
 
 [tool.black]
 target-version = ["py312"]

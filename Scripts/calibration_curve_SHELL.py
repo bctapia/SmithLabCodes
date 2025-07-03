@@ -1,6 +1,6 @@
 """
 This script has been written to find the chemical potential vs pressure calibration
-required for usage of the MC/MD or MC codes 
+required for usage of the MC/MD or MC codes
 The python package pysimm (https://pysimm.org/) is required to run this code
 Pysimm has been modified for parallel optimization and is available here: https://github.com/bctapia/pysimm
 Extensive parts of this code have been taken from pysimm examples

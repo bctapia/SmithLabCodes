@@ -162,6 +162,3 @@ def setup_PB(lammps_in):
     write_input()
 
     return
-
-
-setup_PB("SBF-PAE_equil_unformat_308_1_AA.lmps")
