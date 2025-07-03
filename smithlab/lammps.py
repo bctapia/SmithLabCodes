@@ -12,6 +12,8 @@ def reformat(lammps_in, lammps_out, lammps_ref):
     Reformats the LAMMPS file to replace the style that might have been removed during polymatic
     """
 
+    # TODO: add checking to make sure the reference file really is the correct reference
+
     with open(lammps_in, "r", encoding="utf-8") as file:
         lines = file.readlines()
 
@@ -150,13 +152,68 @@ def polym_stats(lammps_in):
 
         if stripped.startswith("Atoms"):
             in_atoms = True
+            continue
 
-        if in_atoms and columns[0].isalpha:
+        if in_atoms and columns[0].isalpha():
             break
 
         if in_atoms:
-            molecule_num = np.append(molecule_num, columns[2])
+            molecule_num = np.append(molecule_num, int(columns[1]))
 
     molecule, count = np.unique(molecule_num, return_counts=True)
 
     return molecule, count
+
+
+def get_mw(lammps_in):
+    """
+    Computes the molecular weight of a system
+    """
+
+    in_mass = False
+    in_atoms = False
+
+    atom_type = np.array([])
+    atom_mass = np.array([])
+    atoms = np.array([])
+
+    with open(lammps_in, "r", encoding="utf-8") as file:
+        lines = file.readlines()
+
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        columns = stripped.split()
+
+        if not columns:
+            continue
+
+        if stripped.startswith("Masses"):
+            in_mass = True
+            continue
+
+        if in_mass and columns[0].isalpha():
+            in_mass = False
+
+        if in_mass:
+            atom_type = np.append(atom_type, int(columns[0]))
+            atom_mass = np.append(atom_mass, float(columns[1]))
+
+        if stripped.startswith("Atoms"):
+            in_atoms = True
+            continue
+
+        if in_atoms and columns[0].isalpha():
+            in_atoms = False
+
+        if in_atoms:
+            atoms = np.append(atoms, columns[2])
+
+    types, count = np.unique(atoms, return_counts=True)
+
+    mw = 0
+    for i, a_type in enumerate(types):
+        for j, m_type in enumerate(atom_type):
+            if int(a_type) == int(m_type):
+                mw += atom_mass[j] * count[i]
+    print(mw)
+    return mw
