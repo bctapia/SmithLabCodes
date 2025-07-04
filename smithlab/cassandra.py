@@ -59,7 +59,7 @@ def avg_prop(data_in, include=1/3, std=True):
 
 def loading(prp_in, lammps_in=None, mw=None):
     """
-    Computes the gravimetric loading from a Cassandra result.out.prp file
+    Computes the gravimetric sorption capacity (loading) [mmol/g] from a Cassandra result.out.prp file
     If lammps_in is specified, the molar mass of the system is automatically determined
     Otherwise, mw must specify the molar mass (g/mol)
     """
@@ -69,7 +69,26 @@ def loading(prp_in, lammps_in=None, mw=None):
         mw_use = mw
 
     molec_inserted = get_param(prp_in, "Nmols_2")
-    molec_avg = avg_prop(molec_inserted)
+    molec_avg, molec_std = avg_prop(molec_inserted)
+
+    molec_2_mmolg = 1E3/mw_use
+
+    # the math behind the next line: 
+    # moles inserted = molec_inserted/N_A
+    # mass of one mol of system: mw/N_A
+    # loading [mol/g] = (molec_inserted/N_A)/(mw/N_A) = moles_inserted/mw
+    # loading [mmol/g] = (1E3/mw)*moles_inserted = molec_2_mmolg*moles_inserted
+    loading = molec_2_mmolg * molec_avg
+    loading_std = molec_2_mmolg * molec_std
+
+    return loading, loading_std
+
+def concentration(loading, loading_std, pol_density):
+    """
+    Computes the volumetric sorption capacity (concentration) (cm^3_STP/cm^3_pol) from loading
+    """
+
+    
 
 
 
