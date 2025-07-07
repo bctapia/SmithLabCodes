@@ -1,0 +1,201 @@
+09:39:38 [INFO]: Reading simulation parameters from run_props.inp file
+09:39:38 [INFO]: Reading finished sucsessfully
+09:39:38 [INFO]: Reading simulation parameters from /home/gridsan/btapia/pysimm/pysimm/data/csndra_data/mc_default.inp file
+09:39:38 [INFO]: Reading finished sucsessfully
+09:39:51 [INFO]: Writing CASSANDRA .inp file to "co2/0.1/gcmc.inp"...
+09:39:51 [INFO]: File: "co2/0.1/gcmc.inp" was created sucsessfully
+09:39:51 [INFO]: Starting the GCMC simulations with CASSANDRA
+11:12:18 [INFO]: Updating MC system from the CASSANDRA co2/0.1/result.out.chk file...
+11:12:18 [INFO]: Simulation system successfully updated
+11:12:19 [INFO]: Reading simulation parameters from /home/gridsan/btapia/pysimm/pysimm/data/csndra_data/mc_default.inp file
+11:12:19 [INFO]: Reading finished sucsessfully
+11:12:31 [INFO]: Writing CASSANDRA .inp file to "co2/0.5/gcmc.inp"...
+11:12:31 [INFO]: File: "co2/0.5/gcmc.inp" was created sucsessfully
+11:12:32 [INFO]: Starting the GCMC simulations with CASSANDRA
+12:45:00 [INFO]: Updating MC system from the CASSANDRA co2/0.5/result.out.chk file...
+12:45:00 [INFO]: Simulation system successfully updated
+12:45:01 [INFO]: Reading simulation parameters from /home/gridsan/btapia/pysimm/pysimm/data/csndra_data/mc_default.inp file
+12:45:01 [INFO]: Reading finished sucsessfully
+12:45:14 [INFO]: Writing CASSANDRA .inp file to "co2/1.0/gcmc.inp"...
+12:45:14 [INFO]: File: "co2/1.0/gcmc.inp" was created sucsessfully
+12:45:14 [INFO]: Starting the GCMC simulations with CASSANDRA
+14:17:16 [INFO]: Updating MC system from the CASSANDRA co2/1.0/result.out.chk file...
+14:17:16 [INFO]: Simulation system successfully updated
+14:17:17 [INFO]: Reading simulation parameters from /home/gridsan/btapia/pysimm/pysimm/data/csndra_data/mc_default.inp file
+14:17:17 [INFO]: Reading finished sucsessfully
+14:17:30 [INFO]: Writing CASSANDRA .inp file to "co2/2.0/gcmc.inp"...
+14:17:30 [INFO]: File: "co2/2.0/gcmc.inp" was created sucsessfully
+14:17:30 [INFO]: Starting the GCMC simulations with CASSANDRA
+15:50:21 [INFO]: Updating MC system from the CASSANDRA co2/2.0/result.out.chk file...
+15:50:21 [INFO]: Simulation system successfully updated
+15:50:21 [INFO]: Reading simulation parameters from /home/gridsan/btapia/pysimm/pysimm/data/csndra_data/mc_default.inp file
+15:50:21 [INFO]: Reading finished sucsessfully
+15:50:35 [INFO]: Writing CASSANDRA .inp file to "co2/3.0/gcmc.inp"...
+15:50:35 [INFO]: File: "co2/3.0/gcmc.inp" was created sucsessfully
+15:50:35 [INFO]: Starting the GCMC simulations with CASSANDRA
+17:23:19 [INFO]: Updating MC system from the CASSANDRA co2/3.0/result.out.chk file...
+17:23:20 [INFO]: Simulation system successfully updated
+17:23:20 [INFO]: Reading simulation parameters from /home/gridsan/btapia/pysimm/pysimm/data/csndra_data/mc_default.inp file
+17:23:20 [INFO]: Reading finished sucsessfully
+17:23:33 [INFO]: Writing CASSANDRA .inp file to "co2/5.0/gcmc.inp"...
+17:23:33 [INFO]: File: "co2/5.0/gcmc.inp" was created sucsessfully
+17:23:33 [INFO]: Starting the GCMC simulations with CASSANDRA
+18:55:29 [INFO]: Updating MC system from the CASSANDRA co2/5.0/result.out.chk file...
+18:55:30 [INFO]: Simulation system successfully updated
+18:55:30 [INFO]: Reading simulation parameters from /home/gridsan/btapia/pysimm/pysimm/data/csndra_data/mc_default.inp file
+18:55:30 [INFO]: Reading finished sucsessfully
+18:55:43 [INFO]: Writing CASSANDRA .inp file to "co2/7.0/gcmc.inp"...
+18:55:43 [INFO]: File: "co2/7.0/gcmc.inp" was created sucsessfully
+18:55:43 [INFO]: Starting the GCMC simulations with CASSANDRA
+20:28:07 [INFO]: Updating MC system from the CASSANDRA co2/7.0/result.out.chk file...
+20:28:08 [INFO]: Simulation system successfully updated
+20:28:08 [INFO]: Reading simulation parameters from /home/gridsan/btapia/pysimm/pysimm/data/csndra_data/mc_default.inp file
+20:28:08 [INFO]: Reading finished sucsessfully
+20:28:21 [INFO]: Writing CASSANDRA .inp file to "co2/10.0/gcmc.inp"...
+20:28:21 [INFO]: File: "co2/10.0/gcmc.inp" was created sucsessfully
+20:28:21 [INFO]: Starting the GCMC simulations with CASSANDRA
+22:00:52 [INFO]: Updating MC system from the CASSANDRA co2/10.0/result.out.chk file...
+22:00:52 [INFO]: Simulation system successfully updated
+22:00:52 [INFO]: Reading simulation parameters from /home/gridsan/btapia/pysimm/pysimm/data/csndra_data/mc_default.inp file
+22:00:52 [INFO]: Reading finished sucsessfully
+22:01:06 [INFO]: Writing CASSANDRA .inp file to "co2/13.0/gcmc.inp"...
+22:01:06 [INFO]: File: "co2/13.0/gcmc.inp" was created sucsessfully
+22:01:06 [INFO]: Starting the GCMC simulations with CASSANDRA
+23:34:06 [INFO]: Updating MC system from the CASSANDRA co2/13.0/result.out.chk file...
+23:34:07 [INFO]: Simulation system successfully updated
+23:34:07 [INFO]: Reading simulation parameters from /home/gridsan/btapia/pysimm/pysimm/data/csndra_data/mc_default.inp file
+23:34:07 [INFO]: Reading finished sucsessfully
+23:34:20 [INFO]: Writing CASSANDRA .inp file to "co2/16.0/gcmc.inp"...
+23:34:20 [INFO]: File: "co2/16.0/gcmc.inp" was created sucsessfully
+23:34:20 [INFO]: Starting the GCMC simulations with CASSANDRA
+01:06:06 [INFO]: Updating MC system from the CASSANDRA co2/16.0/result.out.chk file...
+01:06:06 [INFO]: Simulation system successfully updated
+01:06:07 [INFO]: Reading simulation parameters from /home/gridsan/btapia/pysimm/pysimm/data/csndra_data/mc_default.inp file
+01:06:07 [INFO]: Reading finished sucsessfully
+01:06:20 [INFO]: Writing CASSANDRA .inp file to "co2/19.0/gcmc.inp"...
+01:06:20 [INFO]: File: "co2/19.0/gcmc.inp" was created sucsessfully
+01:06:20 [INFO]: Starting the GCMC simulations with CASSANDRA
+02:39:38 [INFO]: Updating MC system from the CASSANDRA co2/19.0/result.out.chk file...
+02:39:39 [INFO]: Simulation system successfully updated
+PySIMM: reading lammps data file "./gases/co2.lmps"
+PySIMM: read masses for 2 ParticleTypes
+PySIMM: read masses for 2 ParticleTypes
+(warning) PySIMM: unknown pair style - infering from number of parameters (2=lj 3=buck 4=charmm)
+PySIMM: read "lj" nonbonded parameters for 2 ParticleTypes
+(warning) PySIMM: unknown bond_style - infering from number of parameters (2=harmonic 4=class2)
+PySIMM: read "harmonic" bond parameters for 1 BondTypes
+(warning) PySIMM: unknown angle_style - infering from number of parameters (2=harmonic)
+PySIMM: read "harmonic" angle parameters for 1 AngleTypes
+(warning) PySIMM: cannot determine atom_style; assuming atom_style "full"
+PySIMM: read 3 particles
+PySIMM: read velocities for 3 particles
+PySIMM: read 2 bonds
+PySIMM: read 1 angles
+PySIMM: reading lammps data file "PIM-1_equil_308_1_UA.lmps"
+PySIMM: read masses for 11 ParticleTypes
+(warning) PySIMM: unknown pair style - infering from number of parameters (2=lj 3=buck 4=charmm)
+PySIMM: read "lj" nonbonded parameters for 11 ParticleTypes
+(warning) PySIMM: unknown bond_style - infering from number of parameters (2=harmonic 4=class2)
+PySIMM: read "harmonic" bond parameters for 14 BondTypes
+(warning) PySIMM: unknown angle_style - infering from number of parameters (2=harmonic)
+PySIMM: read "harmonic" angle parameters for 25 AngleTypes
+(warning) PySIMM: unknown dihedral_style - infering from number of parameters (3=harmonic 6=class2 [7, 10]=fourier)
+PySIMM: read "fourier" dihedral parameters for 43 DihedralTypes
+(warning) PySIMM: unknown improper_style - infering from number of parameters (3=cvff)
+PySIMM: read "cvff" improper parameters for 9 ImproperTypes
+(warning) PySIMM: cannot determine atom_style; assuming atom_style "full"
+PySIMM: read 3500 particles
+PySIMM: read velocities for 3500 particles
+PySIMM: read 4192 bonds
+PySIMM: read 7176 angles
+PySIMM: read 11140 dihedrals
+PySIMM: read 1392 impropers
+!!!!CONVERSION!!!!! 0.021716941385975366
+............................................................
+ Begin Cassandra simulation
+ 
+ openmp_flag =  T
+ 
+ Cassandra simulation complete
+
+
+............................................................
+ Begin Cassandra simulation
+ 
+ openmp_flag =  T
+ 
+ Cassandra simulation complete
+
+
+............................................................
+ Begin Cassandra simulation
+ 
+ openmp_flag =  T
+ 
+ Cassandra simulation complete
+
+
+............................................................
+ Begin Cassandra simulation
+ 
+ openmp_flag =  T
+ 
+ Cassandra simulation complete
+
+
+............................................................
+ Begin Cassandra simulation
+ 
+ openmp_flag =  T
+ 
+ Cassandra simulation complete
+
+
+............................................................
+ Begin Cassandra simulation
+ 
+ openmp_flag =  T
+ 
+ Cassandra simulation complete
+
+
+............................................................
+ Begin Cassandra simulation
+ 
+ openmp_flag =  T
+ 
+ Cassandra simulation complete
+
+
+............................................................
+ Begin Cassandra simulation
+ 
+ openmp_flag =  T
+ 
+ Cassandra simulation complete
+
+
+............................................................
+ Begin Cassandra simulation
+ 
+ openmp_flag =  T
+ 
+ Cassandra simulation complete
+
+
+............................................................
+ Begin Cassandra simulation
+ 
+ openmp_flag =  T
+ 
+ Cassandra simulation complete
+
+
+............................................................
+ Begin Cassandra simulation
+ 
+ openmp_flag =  T
+ 
+ Cassandra simulation complete
+
+

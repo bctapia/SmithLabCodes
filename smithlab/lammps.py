@@ -215,5 +215,4 @@ def get_mw(lammps_in):
         for j, m_type in enumerate(atom_type):
             if int(a_type) == int(m_type):
                 mw += atom_mass[j] * count[i]
-    print(mw)
-    return mw
+    return float(mw)

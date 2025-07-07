@@ -107,7 +107,7 @@ def write_forcefield(lammps_in, ff_out="ff.atoms"):
 def write_defaults():
 
     with open("defaults.dat", "w", encoding="utf-8") as file:
-        file.write("ff.atoms\n2.58, 10.22, 298, 12.8\n3.314\n500\n0.2\n20.0, 0.25\n21908391\n0\n\n")
+        file.write("ff.atoms\n2.58, 10.22, 298, 12.8\n3.314\n500\n0.2\n15.0, 0.25\n21908391\n0\n\n")
         file.write("! Default forcefield: from LAMMPS file\n")
         file.write(
             "! Helium atom sigma (A), helium atom epsilon (K), temperature (K), cutoff distance (A)\n"
@@ -154,11 +154,11 @@ def write_input(xyz_in="system.xyz"):
     return
 
 
-def setup_PB(lammps_in):
+def setup_pb(lammps_in, xyz="system.xyz", ff_out="ff.atoms"):
 
-    write_xyz(lammps_in)
-    write_forcefield(lammps_in)
+    write_xyz(lammps_in, xyz)
+    write_forcefield(lammps_in, ff_out)
     write_defaults()
-    write_input()
+    write_input(xyz)
 
     return
