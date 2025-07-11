@@ -59,3 +59,12 @@ def test_get_mw():
     )
 
     assert lammps.get_mw(lammps_in) == 46047.0
+
+
+def test_get_density():
+
+    lammps_in = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "PIM-1_equil_308_1_UA.lmps"
+    )
+
+    assert np.isclose(lammps.get_density(lammps_in), 1.0394028)

@@ -215,4 +215,39 @@ def get_mw(lammps_in):
         for j, m_type in enumerate(atom_type):
             if int(a_type) == int(m_type):
                 mw += atom_mass[j] * count[i]
+
     return float(mw)
+
+
+def get_density(lammps_in):
+    """
+    Computes the density of a system from a LAMMPS data file.
+    """
+    na = 6.02214076*10**23
+    count = 0
+
+    with open(lammps_in, "r", encoding="utf-8") as file:
+        lines = file.readlines()
+
+    for line in lines:
+        stripped = line.strip()
+        columns = stripped.split()
+        
+        if stripped.endswith("xhi"):
+            x_length = float(columns[1]) - float(columns[0])
+            count += 1
+        elif stripped.endswith("yhi"):
+            y_length = float(columns[1]) - float(columns[0])
+            count += 1
+        elif stripped.endswith("zhi"):
+            z_length = float(columns[1]) - float(columns[0])
+            count += 1
+
+        if count == 3:
+            break
+
+    mw = get_mw(lammps_in)
+
+    density = (mw/na) / ((x_length * y_length * z_length)/1E24)
+
+    return density
