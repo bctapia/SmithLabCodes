@@ -81,7 +81,7 @@ def loading(prp_in, lammps_in=None, mw=None):
     return loading_data, loading_std
 
 
-def concentration(loading, loading_std, lammps_in, pol_density=None):
+def concentration(loading, loading_std, lammps_in=None, pol_density=None):
     """
     Computes the volumetric sorption capacity (concentration) (cm^3_STP/cm^3_pol) from loading
     """
@@ -152,9 +152,10 @@ def pressure_calib(files_in, include=[0.1, 40], plot=True, steps=2E6):
 
     if include[1] > press_array[-1]:
         print(f"Warning: {include[1]} is above the maximum pressure in the data ({press_array[-1]})")
-    elif press_array[maxval] < include[1]:
         maxval = maxval + 1
-
+    elif press_array[maxval] < include[1]:
+        maxval = maxval + 2
+    
     chempot_array_idx = chempot_array_idx[minval:maxval]
     chempot_array = chempot_array[minval:maxval]
     max_step_array = max_step_array[minval:maxval]
@@ -173,6 +174,7 @@ def pressure_calib(files_in, include=[0.1, 40], plot=True, steps=2E6):
     def log_model(x, a, b):
         return a*np.log(x)+b
     #result = result.x
+    #print(press_array)
     result, pcov = curve_fit(log_model, press_array, chempot_array)
     if plot:
         press_array_model = np.linspace(press_array[0], press_array[-1], 500)
@@ -209,9 +211,9 @@ def mc_isotherm(files_in, lammps_in, pol_density=None, mw=None):
             loading_data, loading_std = loading(result_file, lammps_in)
 
             if pol_density is not None:
-                loading_data, loading_std = concentration(loading_data, loading_std, pol_density)
+                loading_data, loading_std = concentration(loading_data, loading_std, lammps_in=None, pol_density=pol_density)
             else:
-                loading_data, loading_std = concentration(loading_data, loading_std, lammps_in)
+                loading_data, loading_std = concentration(loading_data, loading_std, lammps_in=lammps_in)
 
             pressure_array = np.append(pressure_array, float(split_path[-1]))
             sorption_array = np.append(sorption_array, loading_data)
