@@ -104,17 +104,33 @@ def write_forcefield(lammps_in, ff_out="ff.atoms"):
     return
 
 
-def write_defaults():
+def write_defaults(defaults="defaults.dat", settings=None):
 
-    with open("defaults.dat", "w", encoding="utf-8") as file:
-        file.write("ff.atoms\n2.58, 10.22, 298, 12.8\n3.314\n500\n0.2\n15.0, 0.25\n21908391\n0\n\n")
-        file.write("! Default forcefield: from LAMMPS file\n")
+    if settings is None:
+        settings = {}
+
+    ff = settings.setdefault("ff", "ff.atoms")
+    he_D = settings.setdefault("he_D", 2.58)
+    he_e = settings.setdefault("he_e", 10.22)
+    he_T = settings.setdefault("he_T", 298)
+    he_cutoff = settings.setdefault("he_cutoff", 12.8)
+    probe_D = settings.setdefault("probe_D", 3.314)
+    trials = settings.setdefault("trials", 500)
+    cubelet_size = settings.setdefault("cubelet_size", 0.2)
+    largest_pore_D = settings.setdefault("largest_pore_D", 15)
+    bin_size = settings.setdefault("bin_size", 0.25)
+    rand_num = settings.setdefault("rand_num", 21908391)
+    vis_network = settings.setdefault("vis_network", 0)
+
+    with open(defaults, "w", encoding="utf-8") as file:
+        file.write(f"{ff}\n{he_D}, {he_e}, {he_T}, {he_cutoff}\n{probe_D}\n{trials}\n{cubelet_size}\n{largest_pore_D}, {bin_size}\n{rand_num}\n{vis_network}\n\n")
+        file.write("! Default forcefield\n")
         file.write(
             "! Helium atom sigma (A), helium atom epsilon (K), temperature (K), cutoff distance (A)\n"
         )
-        file.write("! Nitrogen atom sigma (A)\n")
+        file.write("! Probe atom sigma (A)\n")
         file.write("! Number of samples per atom for the surface area calculation\n")
-        file.write("! 0.2: Cubelet size (A)\n")
+        file.write("! Cubelet size (A)\n")
         file.write("! Largest anticipated pore diameter (A), size of the bin for PSD (A)\n")
         file.write("! Random number seed\n")
         file.write("! Visualization options: 1 -xyz, 2 - grd, 3 - both; 0 - none\n\n")
@@ -123,42 +139,40 @@ def write_defaults():
     return
 
 
-def write_input(xyz_in="system.xyz"):
+def write_input(lammps_in, input="input.dat", xyz_out="system.xyz"):
 
-    x_array = []
-    y_array = []
-    z_array = []
-
-    with open(xyz_in, "r", encoding="utf-8") as file:
+    count = 0 
+    with open(lammps_in, "r", encoding="utf-8") as file:
         lines = file.readlines()
 
-    for _, line in enumerate(lines):
-
+    for line in lines:
         stripped = line.strip()
         columns = stripped.split()
+        
+        if stripped.endswith("xhi"):
+            x_length = float(columns[1]) - float(columns[0])
+            count += 1
+        elif stripped.endswith("yhi"):
+            y_length = float(columns[1]) - float(columns[0])
+            count += 1
+        elif stripped.endswith("zhi"):
+            z_length = float(columns[1]) - float(columns[0])
+            count += 1
 
-        if len(columns) == 1 or columns[0].isalpha():
-            continue
+        if count == 3:
+            break
 
-        x_array.append(float(columns[1]))
-        y_array.append(float(columns[2]))
-        z_array.append(float(columns[3]))
-
-    x_length = max(x_array) - min(x_array)
-    y_length = max(y_array) - min(y_array)
-    z_length = max(z_array) - min(z_array)
-
-    with open("input.dat", "w", encoding="utf-8") as file:
-        file.write(f"{xyz_in}\n{x_length} {y_length} {z_length}\n90 90 90")
+    with open(input, "w", encoding="utf-8") as file:
+        file.write(f"{xyz_out}\n{x_length} {y_length} {z_length}\n90 90 90")
 
     return
 
 
-def setup_pb(lammps_in, xyz="system.xyz", ff_out="ff.atoms"):
+def setup_pb(lammps_in, settings=None, xyz="system.xyz", ff_out="ff.atoms", defaults="defaults.dat", input_file="input.dat"):
 
     write_xyz(lammps_in, xyz)
     write_forcefield(lammps_in, ff_out)
-    write_defaults()
-    write_input(xyz)
+    write_defaults(defaults, settings)
+    write_input(lammps_in, input_file, "system.xyz") #TODO: allow for path if needed
 
     return

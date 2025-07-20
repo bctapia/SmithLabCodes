@@ -80,7 +80,7 @@ def loading(prp_in, lammps_in=None, mw=None):
 
     return loading_data, loading_std
 
-
+# TODO: allow for mw to be passed
 def concentration(loading, loading_std, lammps_in=None, pol_density=None):
     """
     Computes the volumetric sorption capacity (concentration) (cm^3_STP/cm^3_pol) from loading
@@ -94,6 +94,12 @@ def concentration(loading, loading_std, lammps_in=None, pol_density=None):
     c_std = 22.414 * loading_std * density
     return c, c_std
 
+def get_max_step(file):
+
+    steps, _ = get_param(file, "MC_STEP") # prop we get doesn't matter, we just need the steps
+
+    return steps[-1]
+    
 
 # ===================================WRAPPERS=================================== #
 # the following are wrappers to "automate" some tasks using the above functions
@@ -154,7 +160,7 @@ def pressure_calib(files_in, include=[0.1, 40], plot=True, steps=2E6):
         print(f"Warning: {include[1]} is above the maximum pressure in the data ({press_array[-1]})")
         maxval = maxval + 1
     elif press_array[maxval] < include[1]:
-        maxval = maxval + 2
+        maxval = maxval + 1 # TODO: +1 or +2??
     
     chempot_array_idx = chempot_array_idx[minval:maxval]
     chempot_array = chempot_array[minval:maxval]
@@ -192,8 +198,8 @@ def pressure_calib(files_in, include=[0.1, 40], plot=True, steps=2E6):
     #return press_array, press_std_array, chempot_array, result.x
     return result[0], result[1]
 
-
-def mc_isotherm(files_in, lammps_in, pol_density=None, mw=None):
+# TODO: configure MW once configured in concentration()
+def mc_isotherm(files_in, lammps_in, pol_density=None, mw=None, steps=2E6):
     """
     Computes the sorption isotherm from the provided Cassandra files
     """
@@ -201,6 +207,9 @@ def mc_isotherm(files_in, lammps_in, pol_density=None, mw=None):
     pressure_array = np.array([])
     sorption_array = np.array([])
     sorption_std_array = np.array([])
+
+    max_step_array = np.array([])
+
     subdirs = [root for root, dirs, file in os.walk(files_in)]
     for subdir in subdirs:
 
@@ -218,11 +227,17 @@ def mc_isotherm(files_in, lammps_in, pol_density=None, mw=None):
             pressure_array = np.append(pressure_array, float(split_path[-1]))
             sorption_array = np.append(sorption_array, loading_data)
             sorption_std_array = np.append(sorption_std_array, loading_std)
+            max_step_array = np.append(max_step_array, get_max_step(result_file))
 
     pressure_array_idx = np.argsort(pressure_array)
     pressure_array = pressure_array[pressure_array_idx]
     sorption_array = sorption_array[pressure_array_idx]
     sorption_std_array = sorption_std_array[pressure_array_idx]
+    max_step_array = max_step_array[pressure_array_idx]
+
+    for i, step_data in enumerate(max_step_array):
+        if step_data < steps:
+            print(f"Warning: {int(step_data)} steps for P={pressure_array[i]:.2f} is < {int(steps)} steps")
 
     return pressure_array, sorption_array, sorption_std_array
 
