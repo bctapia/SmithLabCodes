@@ -3,7 +3,8 @@ Copyright 2025. Brandon C. Tapia
 
 MIT License
 """
-
+import os
+import numpy as np
 
 def write_xyz(lammps_in, xyz_out="system.xyz"):
     """
@@ -176,3 +177,59 @@ def setup_pb(lammps_in, settings=None, xyz="system.xyz", ff_out="ff.atoms", defa
     write_input(lammps_in, input_file, "system.xyz") #TODO: allow for path if needed
 
     return
+
+
+def get_data(prop, file_in="summary.dat", network=False):
+
+    in_total = False
+    in_network = False
+    print(file_in)
+
+    with open(file_in, "r", encoding="utf-8") as file:
+        lines = file.readlines()
+
+    for _, line in enumerate(lines):
+
+        stripped = line.strip()
+        columns = stripped.split()
+
+        if stripped.startswith("Total"):
+            in_total = True
+
+        if stripped.startswith("Network-accessible"):
+            in_network = True
+
+        if in_total and network:
+            continue
+
+        if in_network and not network:
+            continue
+
+        if stripped.startswith(prop):
+            return float(columns[-1])
+
+
+# ===================================WRAPPERS===================================
+# the following are wrappers to "automate" some tasks using the above functions
+def get_average_data(prop, files_in, network=False):
+    """
+    Averages a property using all summary.dat files within a specified directory.
+    Search includes all subdirectories as well
+    """
+
+    data_array = np.array([])
+
+    subdirs = [root for root, dirs, files in os.walk(files_in)]
+
+    for subdir in subdirs:
+        summary_file = os.path.join(subdir, "summary.dat")
+
+        if os.path.isfile(summary_file):
+            data = get_data(prop, summary_file)
+            data_array = np.append(data_array, data)
+
+    prop_avg = np.average(data_array)
+    prop_std = np.std(data_array)
+    prop_len = len(data_array)
+
+    return prop_avg, prop_std, prop_len

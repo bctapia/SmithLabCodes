@@ -1,8 +1,8 @@
-"""
+
 import os
 from smithlab import poreblazer as pb
 
-
+"""
 def test_write_xyz():
     lammps_in = os.path.join(os.path.dirname(os.path.abspath(__file__)), "PIM-1_blah.lmps")
 
@@ -38,3 +38,8 @@ def test_write_PB():
 
     return
 """
+
+
+def test_get_data():
+    summary = os.path.join(os.path.dirname(os.path.abspath(__file__)), "summary.dat")
+    assert pb.get_data("FV_PO", summary) == 0.03684

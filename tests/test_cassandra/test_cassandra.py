@@ -47,11 +47,23 @@ def test_loading_given_mass():
     assert np.isclose(load_std, 0.06930160798746)
 
 
-def test_concentration():
+def test_concentration_lammps_file():
 
     prp = os.path.join(os.path.dirname(os.path.abspath(__file__)), "result.out.prp")
+    lammps_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "PIM-1_equil_308_1_UA.lmps")
+
     load, load_std = css.loading(prp, mw=46046.9999999998)
-    conc, conc_std = css.concentration(load, load_std, 1.0394028)
+    conc, conc_std = css.concentration(load, load_std, lammps_in=lammps_path)
+
+    assert np.isclose(conc, 94.6117137441344)
+    assert np.isclose(conc_std, 1.61453164465678)
+
+def test_concentration_given_density():
+
+    prp = os.path.join(os.path.dirname(os.path.abspath(__file__)), "result.out.prp")
+
+    load, load_std = css.loading(prp, mw=46046.9999999998)
+    conc, conc_std = css.concentration(load, load_std, pol_density=1.3) # TODO: correct density value
 
     assert np.isclose(conc, 94.6117137441344)
     assert np.isclose(conc_std, 1.61453164465678)
