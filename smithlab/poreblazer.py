@@ -3,8 +3,10 @@ Copyright 2025. Brandon C. Tapia
 
 MIT License
 """
+
 import os
 import numpy as np
+
 
 def write_xyz(lammps_in, xyz_out="system.xyz"):
     """
@@ -124,7 +126,9 @@ def write_defaults(defaults="defaults.dat", settings=None):
     vis_network = settings.setdefault("vis_network", 0)
 
     with open(defaults, "w", encoding="utf-8") as file:
-        file.write(f"{ff}\n{he_D}, {he_e}, {he_T}, {he_cutoff}\n{probe_D}\n{trials}\n{cubelet_size}\n{largest_pore_D}, {bin_size}\n{rand_num}\n{vis_network}\n\n")
+        file.write(
+            f"{ff}\n{he_D}, {he_e}, {he_T}, {he_cutoff}\n{probe_D}\n{trials}\n{cubelet_size}\n{largest_pore_D}, {bin_size}\n{rand_num}\n{vis_network}\n\n"
+        )
         file.write("! Default forcefield\n")
         file.write(
             "! Helium atom sigma (A), helium atom epsilon (K), temperature (K), cutoff distance (A)\n"
@@ -142,14 +146,14 @@ def write_defaults(defaults="defaults.dat", settings=None):
 
 def write_input(lammps_in, input="input.dat", xyz_out="system.xyz"):
 
-    count = 0 
+    count = 0
     with open(lammps_in, "r", encoding="utf-8") as file:
         lines = file.readlines()
 
     for line in lines:
         stripped = line.strip()
         columns = stripped.split()
-        
+
         if stripped.endswith("xhi"):
             x_length = float(columns[1]) - float(columns[0])
             count += 1
@@ -169,12 +173,19 @@ def write_input(lammps_in, input="input.dat", xyz_out="system.xyz"):
     return
 
 
-def setup_pb(lammps_in, settings=None, xyz="system.xyz", ff_out="ff.atoms", defaults="defaults.dat", input_file="input.dat"):
+def setup_pb(
+    lammps_in,
+    settings=None,
+    xyz="system.xyz",
+    ff_out="ff.atoms",
+    defaults="defaults.dat",
+    input_file="input.dat",
+):
 
     write_xyz(lammps_in, xyz)
     write_forcefield(lammps_in, ff_out)
     write_defaults(defaults, settings)
-    write_input(lammps_in, input_file, "system.xyz") #TODO: allow for path if needed
+    write_input(lammps_in, input_file, "system.xyz")  # TODO: allow for path if needed
 
     return
 
@@ -183,7 +194,7 @@ def get_data(prop, file_in="summary.dat", network=False):
 
     in_total = False
     in_network = False
-    print(file_in)
+    # print(file_in)
 
     with open(file_in, "r", encoding="utf-8") as file:
         lines = file.readlines()
@@ -198,6 +209,7 @@ def get_data(prop, file_in="summary.dat", network=False):
 
         if stripped.startswith("Network-accessible"):
             in_network = True
+            in_total = False
 
         if in_total and network:
             continue
@@ -207,6 +219,41 @@ def get_data(prop, file_in="summary.dat", network=False):
 
         if stripped.startswith(prop):
             return float(columns[-1])
+
+
+def get_psd(folder=None, cumulative=False, network=False, normalize=True):
+
+    cum_string = "_cumulative" if cumulative else ""
+    net_string = "Network-accessible_" if network else "Total_"
+    file_name = f"{net_string}psd{cum_string}.txt"
+    if folder:
+        # print(folder)
+        file_loc = os.path.join(folder, file_name)
+        # print("in here")
+    else:
+        file_loc = file_name
+    # print(file_loc)
+    probe_diameter, result = np.genfromtxt(file_loc, unpack=True)
+
+    if normalize:
+        result = result / max(result)
+
+    if float(result[-1]) != float(0):
+        print(
+            f"{file_loc}: Warning, last data point is not zero, consider increasing max probe diameter"
+        )
+    return probe_diameter, result
+
+
+def get_probe(cumulative_val, folder=None, network=False):
+
+    probe_diameter, cumulative_intensity = get_psd(folder=folder, cumulative=True, network=network)
+
+    index = np.argmin(np.abs(cumulative_intensity - cumulative_val))
+    if index == len(probe_diameter):
+        print("Warning, probe size is last data point, consider increasing max probe diameter")
+
+    return probe_diameter[index]
 
 
 # ===================================WRAPPERS===================================
@@ -219,6 +266,10 @@ def get_average_data(prop, files_in, network=False):
 
     data_array = np.array([])
 
+    prop_avg = None
+    prop_std = None
+    prop_len = None
+
     subdirs = [root for root, dirs, files in os.walk(files_in)]
 
     for subdir in subdirs:
@@ -226,6 +277,77 @@ def get_average_data(prop, files_in, network=False):
 
         if os.path.isfile(summary_file):
             data = get_data(prop, summary_file)
+            data_array = np.append(data_array, data)
+
+    prop_avg = np.average(data_array)
+    prop_std = np.std(data_array)
+    prop_len = len(data_array)
+
+    return prop_avg, prop_std, prop_len
+
+
+def get_average_psd(files_in=None, cumulative=False, network=False, normalize=True):
+
+    pore_array = []
+    result_array = []
+
+    pore_avg = None
+    prop_avg = None
+    prop_std = None
+    prop_len = None
+
+    subdirs = [root for root, dirs, files in os.walk(files_in)]
+
+    cum_string = "_cumulative" if cumulative else ""
+    net_string = "Network-accessible_" if network else "Total_"
+    file_name = f"{net_string}psd{cum_string}.txt"
+
+    for subdir in subdirs:
+
+        file = os.path.join(subdir, file_name)
+        # print(file)
+
+        if os.path.isfile(file):
+            probe_diameter, result = get_psd(subdir, cumulative, network, normalize=False)
+            # result_array = np.append(result_array, result)
+            result_array.append(result)
+            # pore_array = np.append(pore_array, probe_diameter)
+            pore_array.append(probe_diameter)
+    pore_avg = np.mean(pore_array, 0)
+    prop_avg = np.mean(result_array, 0)
+    prop_std = np.std(result_array, 0)
+    prop_len = len(result_array)
+
+    if float(np.std(np.std(pore_array, 0))) != float(0):
+        print("Error: it appears probes are not equal across files")
+        return None
+
+    if normalize:
+        prop_avg = prop_avg / np.max(prop_avg)
+        prop_std = prop_std / np.max(prop_avg)
+
+    return pore_avg, prop_avg, prop_std, prop_len
+
+
+def get_average_probe(cumulative_val, files_in, network=False):
+
+    data_array = np.array([])
+
+    prop_avg = None
+    prop_std = None
+    prop_len = None
+
+    subdirs = [root for root, dirs, files in os.walk(files_in)]
+
+    net_string = "Network-accessible_" if network else "Total_"
+    file_name = f"{net_string}psd_cumulative.txt"
+
+    for subdir in subdirs:
+
+        file = os.path.join(subdir, file_name)
+
+        if os.path.isfile(file):
+            data = get_probe(cumulative_val, subdir, network)
             data_array = np.append(data_array, data)
 
     prop_avg = np.average(data_array)
