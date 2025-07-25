@@ -247,6 +247,7 @@ def mc_isotherm(files_in, lammps_in, pol_density=None, mw=None, steps=2e6):
     sorption_std_array = sorption_std_array[pressure_array_idx]
     max_step_array = max_step_array[pressure_array_idx]
 
+    # TODO: is it better to have steps returned (see mcmd_isotherm) to avoid forced printing?
     for i, step_data in enumerate(max_step_array):
         if step_data < steps:
             print(
@@ -256,7 +257,7 @@ def mc_isotherm(files_in, lammps_in, pol_density=None, mw=None, steps=2e6):
     return pressure_array, sorption_array, sorption_std_array
 
 
-def mcmd_isotherm(files_in, lammps_start, pol_density=None, mw=None, steps=2e6):
+def mcmd_isotherm(files_in, lammps_start, pol_density=None, mw=None):
     """
     files_in will be the Trial folder
     """
@@ -303,7 +304,7 @@ def mcmd_isotherm(files_in, lammps_start, pol_density=None, mw=None, steps=2e6):
                 if file.endswith(".gcmc.prp"):
                     iter_current = int(file.split(".")[0])
                     iter_num = iter_current if iter_current > iter_num else iter_num
-
+            # TODO: this is going to fail if it cant find the folder. will need to indent probably
             result_file = os.path.join(res_folder, f"{iter_num}.gcmc.prp")
 
             loading_data, loading_std = loading(result_file, lammps_use_path)
@@ -332,5 +333,62 @@ def mcmd_isotherm(files_in, lammps_start, pol_density=None, mw=None, steps=2e6):
 
     print(pressure_array, sorption_array, sorption_std_array, max_step_array, iter_array)
 
+
+def mcmd_iters(files_in):
+
+    pressure_array = np.array([])
+    iter_array = np.array([])
+    molec_array = np.array([])
+    molec_std_array = np.array([])
+    max_step_array = np.array([])
+
+    subdirs = [root for root, dirs, file in os.walk(files_in)]
+
+    for subdir in subdirs:
+
+        head, tail = os.path.split(subdir)
+
+        pressure = None
+        try:
+            pressure = float(tail)
+        except ValueError:
+            continue
+            
+        iter_ind = np.array([])
+        molec_ind = np.array([])
+        molec_std_ind = np.array([])
+        max_step_ind = np.array([])
+
+        res_folder = os.path.join(subdir, "results")
+        if os.path.exists(res_folder):
+            for file in os.listdir(res_folder):
+
+                if file.endswith(".gcmc.prp"):
+                    iter_current = int(file.split(".")[0])
+                
+                    result_file = os.path.join(res_folder, f"{iter_current}.gcmc.prp")
+                
+                    _, molec = get_param(result_file, "Nmols_2")
+                    molec_avg, molec_std = avg_prop(molec)
+
+                    iter_ind = np.append(iter_ind, iter_current)
+                    molec_ind = np.append(molec_ind, molec_avg)
+                    molec_std_ind = np.append(molec_std_ind, molec_std)
+                    max_step_ind = np.append(max_step_ind, get_max_step(result_file))
+
+            iter_ind_idx = np.argsort(iter_ind)
+            iter_ind = iter_ind[iter_ind_idx]
+            molec_ind = molec_ind[iter_ind_idx]
+            molec_std_ind = molec_std_ind[iter_ind_idx]
+            max_step_ind = max_step_ind[iter_ind_idx]
+
+            pressure_array = np.append(pressure_array, pressure)
+            iter_array = np.append(iter_array, iter_ind)
+            molec_array = np.append(molec_array, molec_ind)
+            molec_std_array = np.append(molec_std_array, molec_std_ind)
+            max_step_array = np.append(max_step_array, max_step_ind)
+
+    # TODO: will need to perform an argsort to get pressures sorted but for now this is good
+    return pressure_array, iter_array, molec_array, molec_std_array, max_step_array
 
 # TODO: consider adding Gelmin-Rubin test for data to include
