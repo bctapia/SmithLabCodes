@@ -5,9 +5,10 @@ from scipy.optimize import minimize, curve_fit
 from smithlab import lammps, regression
 
 
-def get_param(prp_in, prop):
+def get_param(prp_in, prop, max_step=None):
     """
     Extracts a parameter from a .prp Cassandra file
+    Up to a specific max_step if specified
     """
 
     with open(prp_in, "r", encoding="utf-8") as file:
@@ -27,8 +28,14 @@ def get_param(prp_in, prop):
 
     data = np.genfromtxt(prp_in, comments="#", unpack=True)
 
+
     steps = data[step_idx]
     prop_array = data[p_idx]
+    
+    if max_step:
+        step_max_index = np.argmin(abs(steps-max_step)) + 1
+        steps = steps[:step_max_index]
+        prop_array = prop_array[:step_max_index]
 
     return steps.astype(int), prop_array.astype(float)
 
@@ -51,7 +58,7 @@ def avg_prop(data_in, include=float(1 / 3)):
     return prop_avg, prop_std
 
 
-def loading(prp_in, lammps_in=None, mw=None):
+def loading(prp_in, lammps_in=None, mw=None, max_step=None):
     """
     Computes the gravimetric sorption capacity (loading) [mmol/g] from a Cassandra result.out.prp file
     If lammps_in is specified, the molar mass of the system is automatically determined
@@ -63,7 +70,7 @@ def loading(prp_in, lammps_in=None, mw=None):
     else:
         mw_use = mw
 
-    _, molec_inserted = get_param(prp_in, "Nmols_2")
+    _, molec_inserted = get_param(prp_in, "Nmols_2", max_step=max_step)
 
     molec_avg, molec_std = avg_prop(molec_inserted)
 
@@ -100,8 +107,7 @@ def get_max_step(file):
 
     steps, _ = get_param(file, "MC_STEP")  # prop we get doesn't matter, we just need the steps
 
-    return steps[-1]
-
+    return int(steps[-1])
 
 # ===================================WRAPPERS===================================
 # the following are wrappers to "automate" some tasks using the above functions
@@ -207,7 +213,7 @@ def pressure_calib(files_in, include=[0.1, 40], plot=True, steps=2e6):
 
 
 # TODO: configure MW once configured in concentration()
-def mc_isotherm(files_in, lammps_in, pol_density=None, mw=None, steps=2e6):
+def mc_isotherm(files_in, lammps_in, pol_density=None, mw=None, max_step=None):
     """
     Computes the sorption isotherm from the provided Cassandra files
     """
@@ -239,7 +245,9 @@ def mc_isotherm(files_in, lammps_in, pol_density=None, mw=None, steps=2e6):
             pressure_array = np.append(pressure_array, float(split_path[-1]))
             sorption_array = np.append(sorption_array, loading_data)
             sorption_std_array = np.append(sorption_std_array, loading_std)
-            max_step_array = np.append(max_step_array, get_max_step(result_file))
+
+            max_step_ind_val = max_step if max_step else get_max_step(result_file) 
+            max_step_array = np.append(max_step_array, max_step_ind_val)
 
     pressure_array_idx = np.argsort(pressure_array)
     pressure_array = pressure_array[pressure_array_idx]
@@ -247,17 +255,11 @@ def mc_isotherm(files_in, lammps_in, pol_density=None, mw=None, steps=2e6):
     sorption_std_array = sorption_std_array[pressure_array_idx]
     max_step_array = max_step_array[pressure_array_idx]
 
-    # TODO: is it better to have steps returned (see mcmd_isotherm) to avoid forced printing?
-    for i, step_data in enumerate(max_step_array):
-        if step_data < steps:
-            print(
-                f"Warning: {int(step_data)} steps for P={pressure_array[i]:.2f} is < {int(steps)} steps"
-            )
 
     return pressure_array, sorption_array, sorption_std_array
 
 
-def mcmd_isotherm(files_in, lammps_start, pol_density=None, mw=None):
+def mcmd_isotherm(files_in, lammps_start, pol_density=None, mw=None, max_step=None):
     """
     files_in will be the Trial folder
     """
@@ -307,11 +309,11 @@ def mcmd_isotherm(files_in, lammps_start, pol_density=None, mw=None):
             # TODO: this is going to fail if it cant find the folder. will need to indent probably
             result_file = os.path.join(res_folder, f"{iter_num}.gcmc.prp")
 
-            loading_data, loading_std = loading(result_file, lammps_use_path)
+            loading_data, loading_std = loading(result_file, lammps_use_path, max_step=max_step)
 
             if pol_density is not None:
                 loading_data, loading_std = concentration(
-                    loading_data, loading_std, lammps_in=None, pol_density=pol_density
+                    loading_data, loading_std, lammps_in=None, pol_density=pol_density,
                 )
             else:
                 loading_data, loading_std = concentration(
@@ -321,8 +323,10 @@ def mcmd_isotherm(files_in, lammps_start, pol_density=None, mw=None):
             pressure_array = np.append(pressure_array, pressure)
             sorption_array = np.append(sorption_array, loading_data)
             sorption_std_array = np.append(sorption_std_array, loading_std)
-            max_step_array = np.append(max_step_array, get_max_step(result_file))
-            iter_array = np.append(iter_array, iter_num)
+
+            max_step_ind_val = max_step if max_step else get_max_step(result_file) 
+            max_step_array = np.append(max_step_array, max_step_ind_val)
+            iter_array = np.append(iter_array, int(iter_num))
 
     pressure_array_idx = np.argsort(pressure_array)
     pressure_array = pressure_array[pressure_array_idx]
@@ -331,16 +335,16 @@ def mcmd_isotherm(files_in, lammps_start, pol_density=None, mw=None):
     max_step_array = max_step_array[pressure_array_idx]
     iter_array = iter_array[pressure_array_idx]
 
-    print(pressure_array, sorption_array, sorption_std_array, max_step_array, iter_array)
+    return pressure_array, sorption_array, sorption_std_array, max_step_array, iter_array
 
 
-def mcmd_iters(files_in):
+def mcmd_iters(files_in, max_step=None):
 
     pressure_array = np.array([])
-    iter_array = np.array([])
-    molec_array = np.array([])
-    molec_std_array = np.array([])
-    max_step_array = np.array([])
+    iter_array = []
+    molec_array = []
+    molec_std_array = []
+    max_step_array = []
 
     subdirs = [root for root, dirs, file in os.walk(files_in)]
 
@@ -353,7 +357,7 @@ def mcmd_iters(files_in):
             pressure = float(tail)
         except ValueError:
             continue
-            
+
         iter_ind = np.array([])
         molec_ind = np.array([])
         molec_std_ind = np.array([])
@@ -365,16 +369,18 @@ def mcmd_iters(files_in):
 
                 if file.endswith(".gcmc.prp"):
                     iter_current = int(file.split(".")[0])
-                
+
                     result_file = os.path.join(res_folder, f"{iter_current}.gcmc.prp")
-                
-                    _, molec = get_param(result_file, "Nmols_2")
+
+                    _, molec = get_param(result_file, "Nmols_2", max_step=max_step)
                     molec_avg, molec_std = avg_prop(molec)
 
                     iter_ind = np.append(iter_ind, iter_current)
                     molec_ind = np.append(molec_ind, molec_avg)
                     molec_std_ind = np.append(molec_std_ind, molec_std)
-                    max_step_ind = np.append(max_step_ind, get_max_step(result_file))
+
+                    max_step_ind_val = max_step if max_step else get_max_step(result_file) 
+                    max_step_ind = np.append(max_step_ind, max_step_ind_val)
 
             iter_ind_idx = np.argsort(iter_ind)
             iter_ind = iter_ind[iter_ind_idx]
@@ -383,12 +389,18 @@ def mcmd_iters(files_in):
             max_step_ind = max_step_ind[iter_ind_idx]
 
             pressure_array = np.append(pressure_array, pressure)
-            iter_array = np.append(iter_array, iter_ind)
-            molec_array = np.append(molec_array, molec_ind)
-            molec_std_array = np.append(molec_std_array, molec_std_ind)
-            max_step_array = np.append(max_step_array, max_step_ind)
+            iter_array.append(iter_ind)
+            molec_array.append(molec_ind)
+            molec_std_array.append(molec_std_ind)
+            max_step_array.append(max_step_ind)
 
-    # TODO: will need to perform an argsort to get pressures sorted but for now this is good
+        pressure_array_idx = np.argsort(pressure_array)
+        pressure_array = pressure_array[pressure_array_idx]
+        iter_array = [iter_array[i] for i in pressure_array_idx]
+        molec_array = [molec_array[i] for i in pressure_array_idx]
+        molec_std_array = [molec_std_array[i] for i in pressure_array_idx]
+        max_step_array = [max_step_array[i] for i in pressure_array_idx]
+
     return pressure_array, iter_array, molec_array, molec_std_array, max_step_array
 
 # TODO: consider adding Gelmin-Rubin test for data to include

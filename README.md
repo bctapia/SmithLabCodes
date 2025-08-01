@@ -1,15 +1,36 @@
 # SmithLabCodes
-This repository contains any publicly available code authored when working in the Smith Lab in the Department of Chemical Engineering
-These codes dependent on:
-- Python3
-- Perl5
-- Fortran90
-- MATLAB
-- LAMMPS (https://www.lammps.org/#gsc.tab=0)
-- Cassandra (https://cassandra.nd.edu/)
-- Pysimm (https://pysimm.org/download/ & modified by myself here: https://github.com/bctapia/pysimm)
-- PoreBlazer (https://github.com/SarkisovGitHub/PoreBlazer)
+Helper functions to aid and automate computational and experimental materials research
+
+## Capibilities
+### Current Modules:
+
+**cassandra**: Collect and analyze data from the Cassandra Monte Carlo software
+
+**lammps**: Collect and analyze data from the LAMMPS molecular dynamics software
+
+**os**: Interface with your operating system
+
+**poreblazer**: Create inputs and collect and analyze data from the PoreBlazer material analysis software
+
+**regression**: General regression functions
+
+**slurm**: Create batch scripts for the SchedMD SLURM scheduler
+
+**deprecation**: MATLAB codes that are being ported to Python
+
+### Planned Modules:
+
+**maxwell**: Collect and analyze data from Maxwell Robotics sorption and permeation systems
+
+**zeopp**: Create inputs and collect and analyze data from the Zeo++ material analysis software
+
+**pbspro**: Create batch scripts for the Altair PBS Pro scheduler
+
+## Download and Use
+
+
 ## Contact
-Brandon Tapia (bctapia@mit.edu)
+Brandon C. Tapia (bctapia@mit.edu)
+
 ## License
 This project is licensed under the MIT License. Please cite this repository if used!
