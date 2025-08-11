@@ -1,7 +1,8 @@
-"""
-"""
+""" """
+
 import subprocess
 import os
+
 
 def lammps_dihedrals(lammps_in, lammps_out, update_title=True):
     """
@@ -52,11 +53,11 @@ def intermol(intermol, lmp_in, pair_style, dihedral_remove=True, fix=True):
         lammps_dihedrals("lmp_in_temp_renamed.lmps", lmp_in)
 
     cmd = (
-        'python3 /mnt/c/Users/btapi/OneDrive/Documents/GitHub/InterMol/intermol/convert.py '
-        '--lmp_in /home/btapia/intermol_test/equil.in --gromacs ' # TODO generalize
+        "python3 /mnt/c/Users/btapi/OneDrive/Documents/GitHub/InterMol/intermol/convert.py "
+        "--lmp_in /home/btapia/intermol_test/equil.in --gromacs "  # TODO generalize
         '-ls "pair_style cut/coul/long 15"'  # TODO generalize
     )
-    
+
     result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
 
     print("===== STDOUT =====")
@@ -71,9 +72,8 @@ def intermol(intermol, lmp_in, pair_style, dihedral_remove=True, fix=True):
     if dihedral_remove:
         # switching names back
         os.rename(lmp_in, f"{lmp_in}_no_dihedrals.lmps")
-        os.rename("lmp_in_temp_renamed.lmps", f"{lmp_in}") 
-        
-        
+        os.rename("lmp_in_temp_renamed.lmps", f"{lmp_in}")
+
 
 # intermol does a lot of the work but there are some things we still need to iron out
 def fix_harmonic_bonds(top_in, top_out):
@@ -92,8 +92,8 @@ def fix_harmonic_bonds(top_in, top_out):
         for i, line in enumerate(lines):
 
             stripped = line.strip()
-            columns = stripped.split()    
-    
+            columns = stripped.split()
+
             if not columns:
                 in_bonds = False
                 f.writelines("\n")
@@ -111,11 +111,12 @@ def fix_harmonic_bonds(top_in, top_out):
                 continue
 
             if in_bonds:
-                columns[4] = float(columns[4])*2
-                f.writelines(f"     {columns[0]:<8}{columns[1]:<8}{columns[2]:<8}{columns[3]:<17}{columns[4]:<15.8e}\n")
+                columns[4] = float(columns[4]) * 2
+                f.writelines(
+                    f"     {columns[0]:<8}{columns[1]:<8}{columns[2]:<8}{columns[3]:<17}{columns[4]:<15.8e}\n"
+                )
             else:
                 f.writelines(line)
-
 
 
 def add_fourier_dihedrals(lammps_in, top_in):
@@ -137,7 +138,7 @@ def add_fourier_dihedrals(lammps_in, top_in):
     atom_2 = []
     atom_3 = []
     atom_4 = []
-    
+
     for i, line in enumerate(lines):
 
         stripped = line.strip()
@@ -178,7 +179,7 @@ def add_fourier_dihedrals(lammps_in, top_in):
 
     with open(top_in, "r", encoding="utf-8") as f:
         lines = f.readlines()
-        
+
     insert_index = next((i for i, line in enumerate(lines) if "[ system ]" in line), None)
 
     if insert_index is None:
@@ -194,7 +195,7 @@ def add_fourier_dihedrals(lammps_in, top_in):
             if specific_d_type == d_type:
                 index_use = j
                 break
-        
+
         # no factor of 2 used here
         line = f"     {atom_1[i]:<6}{atom_2[i]:<6}{atom_3[i]:<6}{atom_4[i]:<6}  1  {dihedral_d1[index_use]:<.15} {dihedral_K[index_use]*4.184:<.15} {int(dihedral_n1[index_use])}\n"
         inserted_lines.append(line)
