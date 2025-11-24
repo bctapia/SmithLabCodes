@@ -134,6 +134,46 @@ def setup_lammps(lammps_in, lammps_out, lammps_ref):
     reorder_sections(lammps_out, lammps_out)
 
 
+def get_flucuating_prop(file_in, property, start=0, end=np.inf):
+
+    in_props = False
+    prop_array = np.array([])
+    step_array = np.array([])
+
+    with open(file_in, "r") as file:
+        lines = file.readlines()
+
+    for line in lines:
+
+        if not line.strip():
+            continue
+
+        split_line = line.strip().split()
+
+        if split_line[0] == "Step":
+
+            in_props = True
+            prop_idx = split_line.index(property)
+
+            continue
+
+        if split_line[0] == "Loop":
+            in_props = False
+
+        if in_props:
+            step = int(split_line[0])
+
+            if step >= start and step <= end:
+                prop = float(split_line[prop_idx])
+                step_array = np.append(step_array, step)
+                prop_array = np.append(prop_array, prop)
+
+    prop_avg = np.average(prop_array)
+    prop_std = np.std(prop_array)
+
+    return step_array, prop_array, prop_avg, prop_std
+
+
 def polym_stats(lammps_in):
 
     in_atoms = False
@@ -251,3 +291,34 @@ def get_density(lammps_in):
     density = (mw / na) / ((x_length * y_length * z_length) / 1e24)
 
     return density
+
+
+def append_traj(traj_in, traj_out, time_spacer=100):
+    """
+    Appends LAMMPS trajectories that each start at timestep = 0.
+    Adds a fixed offset between them to avoid overlapping timesteps.
+    """
+    time_offset = 0
+
+    with open(traj_out, "w", encoding="utf-8") as outfile:
+        for traj in traj_in:
+            print(f"Processing {traj}")
+            with open(traj, "r", encoding="utf-8") as infile:
+                lines = infile.readlines()
+
+            timesteps = [int(lines[i+1].strip()) for i, line in enumerate(lines)
+                         if line.startswith("ITEM: TIMESTEP")]
+
+            if not timesteps:
+                print(f"Warning: no timesteps found in {traj}")
+                continue
+
+            last_t = max(timesteps)
+
+            for i, line in enumerate(lines):
+                if line.startswith("ITEM: TIMESTEP"):
+                    old_t = int(lines[i+1].strip())
+                    lines[i+1] = f"{old_t + time_offset}\n"
+
+            outfile.writelines(lines)
+            time_offset += last_t + time_spacer

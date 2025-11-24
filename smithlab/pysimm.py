@@ -201,3 +201,88 @@ python run_MCMD.py
     slurm.write_batch(
         folder_path / "flex.sh", N=1, n=1, partition=partition, cpus_per_task=np, command=commands
     )
+
+def xyz_to_traj(xyz_file, traj_file):
+    """
+    Converts an XYZ dump file from the MC steps in a pysimm simulation to a pseudo LAMMPS trajectory file for easier visualization
+    """
+
+    max_atoms = 0
+
+    with open(xyz_file, "r", encoding="utf-8") as f:
+        lines = f.readlines()
+
+    # Find maximum number of atoms present in any frame
+    for i, line in enumerate(lines):
+        if line.strip().startswith("MC_STEP"):
+            num_atoms = int(lines[i-1].strip())
+            if num_atoms > max_atoms:
+                max_atoms = num_atoms
+
+    with open(traj_file, "w", encoding="utf-8") as out:
+        i = 0
+        num_lines = len(lines)
+        while i < num_lines:
+            stripped = lines[i].strip()
+            if not stripped:
+                i += 1
+                continue
+
+            if stripped.startswith("MC_STEP"):
+                atoms_current = int(lines[i-1].strip())
+
+                # this frame uses these lines:
+                atom_lines = lines[i + 1 : i + 1 + atoms_current]
+
+                minx = miny = minz = float("inf")
+                maxx = maxy = maxz = float("-inf")
+
+                timestep = stripped.split()[-1]
+
+                out.write("ITEM: TIMESTEP\n")  # <-- add colon
+                out.write(f"{timestep}\n")
+                out.write("ITEM: NUMBER OF ATOMS\n")
+                out.write(f"{max_atoms}\n")
+
+                coords = []
+                for ln in atom_lines:
+                    cols = ln.split()
+                    x = float(cols[1])
+                    y = float(cols[2])
+                    z = float(cols[3])
+                    coords.append((cols[0], x, y, z))
+                    if x < minx: 
+                        minx = x
+                    if y < miny:
+                        miny = y
+                    if z < minz:
+                        minz = z
+                    if x > maxx:
+                        maxx = x
+                    if y > maxy:
+                        maxy = y
+                    if z > maxz:
+                        maxz = z
+
+                out.write("ITEM: BOX BOUNDS pp pp pp\n")
+                out.write(f"{minx} {maxx}\n")
+                out.write(f"{miny} {maxy}\n")
+                out.write(f"{minz} {maxz}\n")
+
+                out.write("ITEM: ATOMS id type x y z\n")
+                id_counter = 1
+                for sym, x, y, z in coords:
+                    atype = 2 if sym.upper().startswith("A") else 1
+                    out.write(f"{id_counter} {atype} {x} {y} {z}\n")
+                    id_counter += 1
+
+                while id_counter <= max_atoms:
+                    out.write(f"{id_counter} 99 0.0 0.0 0.0\n")
+                    id_counter += 1
+
+                # advance past this frame (MC_STEP + its atoms)
+                i = i + 1 + atoms_current
+                continue
+
+            # not an MC_STEP line: just advance
+            i += 1

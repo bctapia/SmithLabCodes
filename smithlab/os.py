@@ -4,19 +4,27 @@ Copyright 2025 Brandon C. Tapia
 MIT License
 """
 
-import os
+from pathlib import Path
+import platform
 
 
-def get_drive(drive="toshiba"):
+def get_drive(drive="d"):
     """
-    Returns the path to the data directory based on the specified drive.
+    Returns a Path object to the specified drive.
+
+    Returns:
+    - pathlib.Path object
     """
 
-    if drive == "toshiba":
-        data_path = os.path.join(os.sep, "mnt", "d")
-    elif drive == "seagate":
-        data_path = os.path.join(os.sep, "mnt", "e")
-    else:
-        raise ValueError("Unsupported drive specified.")
+    if platform.system() == "Windows":
+        path = Path(f"{drive.upper()}:\\")
+    elif platform.system() == "darwin":  # macOS
+        path = Path(f"/Volumes/{drive}") 
+    else:  # assume Unix-like system (including WSL)
+        path = Path("/mnt") / drive
 
-    return data_path
+    return path
+
+
+def get_wsl_home(distro="Ubuntu", user="btapia"):
+    return Path(f"\\\\wsl$\\{distro}\\home\\{user}")

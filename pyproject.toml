@@ -19,7 +19,8 @@ authors = [
 
 dependencies = [
   "numpy",
-  "matplotlib"]
+  "matplotlib",
+  "scipy"]
 
 keywords = ["helpers"]
 

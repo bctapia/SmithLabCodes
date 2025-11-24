@@ -213,9 +213,10 @@ def pressure_calib(files_in, include=[0.1, 40], plot=True, steps=2e6):
 
 
 # TODO: configure MW once configured in concentration()
-def mc_isotherm(files_in, lammps_in, pol_density=None, mw=None, max_step=None):
+def mc_isotherm(files_in, lammps_start, pol_density=None, mw=None, max_step=None):
     """
     Computes the sorption isotherm from the provided Cassandra files
+    files_in should be the Trial folder
     """
 
     pressure_array = np.array([])
@@ -225,13 +226,31 @@ def mc_isotherm(files_in, lammps_in, pol_density=None, mw=None, max_step=None):
     max_step_array = np.array([])
 
     subdirs = [root for root, dirs, file in os.walk(files_in)]
+
+     # find the .lmps file in the current directory:
+    lammps_use_path = None
+    num_lammps = 0
+
+    for file in os.listdir(files_in):
+        if file.endswith(".lmps") and file.startswith(lammps_start):
+            lammps_use_path = os.path.join(files_in, file)
+            num_lammps += 1
+
+        if num_lammps > 1:
+            print(f"multiple .lmps found, unsure what to do, skipping {subdir}")
+            return
+        #print(subdir)
+        #print(lammps_use_path)
+
     for subdir in subdirs:
 
         result_file = os.path.join(subdir, "result.out.prp")
-
+        #print(result_file)
         if os.path.isfile(result_file):
+            #print(subdir)
+            #print('I AM IN', result_file)
             split_path = os.path.normpath(subdir).split(os.path.sep)
-            loading_data, loading_std = loading(result_file, lammps_in)
+            loading_data, loading_std = loading(result_file, lammps_use_path)
 
             if pol_density is not None:
                 loading_data, loading_std = concentration(
@@ -239,7 +258,7 @@ def mc_isotherm(files_in, lammps_in, pol_density=None, mw=None, max_step=None):
                 )
             else:
                 loading_data, loading_std = concentration(
-                    loading_data, loading_std, lammps_in=lammps_in
+                    loading_data, loading_std, lammps_in=lammps_use_path
                 )
 
             pressure_array = np.append(pressure_array, float(split_path[-1]))
@@ -255,10 +274,10 @@ def mc_isotherm(files_in, lammps_in, pol_density=None, mw=None, max_step=None):
     sorption_std_array = sorption_std_array[pressure_array_idx]
     max_step_array = max_step_array[pressure_array_idx]
 
-    return pressure_array, sorption_array, sorption_std_array
+    return pressure_array, sorption_array, sorption_std_array, max_step_array
 
 
-def mcmd_isotherm(files_in, lammps_start, pol_density=None, mw=None, max_step=None):
+def mcmd_isotherm(files_in, lammps_start, pol_density=None, mw=None, max_step=None, iter=None, verbose=False):
     """
     files_in will be the Trial folder
     """
@@ -270,7 +289,8 @@ def mcmd_isotherm(files_in, lammps_start, pol_density=None, mw=None, max_step=No
     max_step_array = np.array([])
 
     subdirs = [root for root, dirs, file in os.walk(files_in)]
-
+    if verbose:
+        print(subdirs)
     for subdir in subdirs:
 
         # print(subdir)
@@ -283,9 +303,18 @@ def mcmd_isotherm(files_in, lammps_start, pol_density=None, mw=None, max_step=No
         except ValueError:
             continue
 
+        if os.path.exists(subdir) and verbose:
+            print(f"found folder {subdir}")
+
+        elif not os.path.exists(subdir) and verbose:
+            print(f"skipping folder {subdir}")
+              
         # if it is, check if this folder has a results folder
         res_folder = os.path.join(subdir, "results")
         if os.path.exists(res_folder):
+
+            if verbose:
+                print(f"Processing folder: {subdir} with pressure {pressure:.2f}")
 
             # find the .lmps file in the current directory:
             lammps_use_path = None
@@ -296,17 +325,24 @@ def mcmd_isotherm(files_in, lammps_start, pol_density=None, mw=None, max_step=No
                     lammps_use_path = os.path.join(subdir, file)
                     num_lammps += 1
             if num_lammps > 1:
-                print("multiple .lmps found, unsure what to do, exiting")
-                break
+                print(f"multiple .lmps found, unsure what to do, skipping {subdir}")
+                continue
 
-            # find the X.gcmc.prp with the highest number
-            iter_num = 0
-            for file in os.listdir(res_folder):
-                if file.endswith(".gcmc.prp"):
-                    iter_current = int(file.split(".")[0])
-                    iter_num = iter_current if iter_current > iter_num else iter_num
+            if iter is None:
+                iter = {}
 
-            if iter_num != 0:  # making sure that .prp files were actually found
+            if tail in iter:
+                iter_num = iter[tail] # using tail as this is what is seen in the directory
+                
+            else:
+                # find the X.gcmc.prp with the highest number
+                iter_num = 0
+                for file in os.listdir(res_folder):
+                    if file.endswith(".gcmc.prp"):
+                        iter_current = int(file.split(".")[0])
+                        iter_num = iter_current if iter_current > iter_num else iter_num
+
+            if iter_num != 0 and os.path.exists(os.path.join(res_folder, f"{iter_num}.gcmc.prp")):  # making sure that .prp files were actually found
                 result_file = os.path.join(res_folder, f"{iter_num}.gcmc.prp")
 
                 loading_data, loading_std = loading(result_file, lammps_use_path, max_step=max_step)
@@ -328,6 +364,9 @@ def mcmd_isotherm(files_in, lammps_start, pol_density=None, mw=None, max_step=No
                 max_step_array = np.append(max_step_array, max_step_ind_val)
                 iter_array = np.append(iter_array, int(iter_num))
 
+            elif verbose:
+                print(f"No .gcmc.prp files found in {res_folder}, skipping")
+
     pressure_array_idx = np.argsort(pressure_array)
     pressure_array = pressure_array[pressure_array_idx]
     sorption_array = sorption_array[pressure_array_idx]
@@ -339,7 +378,9 @@ def mcmd_isotherm(files_in, lammps_start, pol_density=None, mw=None, max_step=No
 
 
 def mcmd_iters(files_in, max_step=None):
-
+    """
+    files_in is the Trials directory
+    """
     pressure_array = np.array([])
     iter_array = []
     molec_array = []
