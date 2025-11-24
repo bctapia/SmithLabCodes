@@ -322,3 +322,60 @@ def append_traj(traj_in, traj_out, time_spacer=100):
 
             outfile.writelines(lines)
             time_offset += last_t + time_spacer
+
+
+def remove_atoms(lammps_in, lammps_out, types)
+    
+    in_atoms = False
+    in_bonds = False
+    in_angles = False
+    in_dihedrals = False
+    in_impropers = False
+
+    with open(lammps_in, "r", encoding="utf-8") as file:
+        lines = file.readlines()
+
+    for i, line in enumerate(lines):
+
+        if not line.strip():
+            continue
+        
+        stripped = line.strip()
+        columns = stripped.split()
+
+        if stripped.startswith("Atoms"):
+            in_atoms = True
+            in_bonds = False
+            in_angles = False
+            in_dihedrals = False
+            in_impropers = False
+
+        elif stripped.startswith("Bonds"):
+            in_atoms = False
+            in_bonds = True
+            in_angles = False
+            in_dihedrals = False
+            in_impropers = False
+
+        elif stripped.startswith("Angles"):
+            in_atoms = False
+            in_bonds = False
+            in_angles = True
+            in_dihedrals = False
+            in_impropers = False
+
+        elif stripped.startswith("Dihedrals"):
+            in_atoms = False
+            in_bonds = False
+            in_angles = False
+            in_dihedrals = True
+            in_impropers = False
+
+        elif stripped.startswith("Impropers"):
+            in_atoms = False
+            in_bonds = False
+            in_angles = False
+            in_dihedrals = False
+            in_impropers = True
+    
+
