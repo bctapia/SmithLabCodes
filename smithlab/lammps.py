@@ -377,5 +377,11 @@ def remove_atoms(lammps_in, lammps_out, types)
             in_angles = False
             in_dihedrals = False
             in_impropers = True
+
+        if in_atoms:
+            if float([columns[2]]) in types:
+                # DO SOMETHING HERE
+                return
+        
     
 
