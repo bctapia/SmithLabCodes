@@ -79,14 +79,14 @@ def slurm_fragments(missing_in, N, n, partition, mem_per_cpu):
                 if match_nprocs:
                     current = int(match_nprocs.group(2))
                     if current != n:
-                        line = pattern_nprocs.sub(rf"\1{n}\3", line)
+                        line = pattern_nprocs.sub(lambda m: f"{m.group(1)}{n}{m.group(3)}", line)
                         print(f"Changing nprocs from {current} to {n} in {file_path}")
                         changed = True
                 match_maxcore = pattern_maxcore.search(line)
                 if match_maxcore:
                     current = int(match_maxcore.group(2))
                     if int(mem_per_cpu) < current:
-                        line = pattern_maxcore.sub(rf"\1{mem_per_cpu}", line)
+                        line = pattern_maxcore.sub(lambda m: f"{m.group(1)}{mem_per_cpu}", line)
                         print(f"Decreasing maxcore from {current} to {mem_per_cpu} in {file_path}")
                         changed = True
                 lines.append(line)
