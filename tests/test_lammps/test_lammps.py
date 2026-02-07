@@ -68,3 +68,24 @@ def test_get_density():
     )
 
     assert np.isclose(lammps.get_density(lammps_in), 1.0394028)
+
+
+def test_combine_coeffs():
+
+    coeffs_1 = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "ff_acn.in"
+    )
+
+    coeffs_2 = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "ff_tea.in"
+    )
+
+    coeffs_3 = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "ff_tfb.in"
+    )
+
+    coeffs_out = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "ff_system.in"
+    )
+
+    lammps.combine_coeffs(coeffs_1, coeffs_2, coeffs_3, coeffs_out=coeffs_out)
