@@ -4,7 +4,10 @@ https://pubs.acs.org/doi/10.1021/acs.jctc.1c00195
 https://qforce.readthedocs.io/en/latest/
 https://github.com/selimsami/qforce
 """
+import re
+from pathlib import Path
 
+from smithlab import slurm
 
 def make_ext_lj(top_in, type_idx=None):
     """Makes the ext_lj parameter file from a given *.top GROMACS topology file.
@@ -45,3 +48,92 @@ def make_ext_lj(top_in, type_idx=None):
     with open("ext_lj", "w") as f:
         for atom_type in ext_lj_params:
             f.write(f"{atom_type}\n")
+
+# Wrappers #
+def slurm_fragments(missing_in, N, n, partition, mem_per_cpu):
+    """
+    Writes the slurm files for all fragments needed to be run.
+    Fragments are identified by reading the "missing" file Q-Force creates.
+    """
+
+    missing_in_path = Path(missing_in)
+    with open(missing_in, "r") as file:
+        frags = file.readlines()
+
+    pattern_nprocs = re.compile(r"(%pal\s+nprocs\s+)(\d+)(\s+end)", re.IGNORECASE)
+    pattern_maxcore = re.compile(r"(%maxcore\s+)(\d+)", re.IGNORECASE)
+    for i, frag in enumerate(frags):
+
+        frag_name = frag.strip()
+        frag_split = f"{i}_{frag_name.split('~')[0]}"
+
+        # Check if we need to modify number of procs
+        file_path = missing_in_path.parent / f"{frag_name}.inp"
+
+        lines = []
+        changed = False
+
+        with open(file_path, "r") as file:
+            for line in file:
+                match_nprocs = pattern_nprocs.search(line)
+                if match_nprocs:
+                    current = int(match_nprocs.group(2))
+                    if current != n:
+                        line = pattern_nprocs.sub(rf"\1{n}\3", line)
+                        print(f"Changing nprocs from {current} to {n} in {file_path}")
+                        changed = True
+                match_maxcore = pattern_maxcore.search(line)
+                if match_maxcore:
+                    current = int(match_maxcore.group(2))
+                    if int(mem_per_cpu) < current:
+                        line = pattern_maxcore.sub(rf"\1{mem_per_cpu}", line)
+                        print(f"Decreasing maxcore from {current} to {mem_per_cpu} in {file_path}")
+                        changed = True
+                lines.append(line)
+
+        if changed:
+            with open(file_path, "w") as file:
+                file.writelines(lines)
+
+
+        batch_out = f"{frag_split}.sh"
+        out_file = f"{frag_split}.txtout"
+
+        command=rf"""
+. /etc/profile.d/modules.sh
+
+# Load environment and modules
+source /etc/profile
+module load mpi/openmpi-5.0.7
+
+eval "$(conda shell.bash hook)"
+conda activate polypal
+
+export OMP_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export OMP_PROC_BIND=false
+export OMP_PLACES=threads
+
+SUBMITDIR="$SLURM_SUBMIT_DIR"
+
+echo "TMPDIR=$TMPDIR"
+echo "Running on $(hostname)"
+
+shopt -s nullglob
+LLcopy2tmp "$SUBMITDIR/{frag_name}.inp" 2>/dev/null || true
+
+export TMPDIR
+
+cleanup() {{
+  echo "Copying results back to $SUBMITDIR"
+   rsync -a --exclude="*.tmp*" --exclude="*densities*" --exclude="*bas*"  "$TMPDIR/" "$SUBMITDIR/" || true
+}}
+trap cleanup EXIT
+
+cd "$TMPDIR"
+
+/home/gridsan/btapia/orca_6_1_1_linux_x86-64_shared_openmpi418_nodmrg/orca {frag_name}.inp > {frag_name}.out
+"""
+        slurm.write_batch(batch_out, N, n, partition, mem_per_cpu, out_file, command)
+
+
