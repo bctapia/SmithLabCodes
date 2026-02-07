@@ -134,6 +134,6 @@ cd "$TMPDIR"
 
 /home/gridsan/btapia/orca_6_1_1_linux_x86-64_shared_openmpi418_nodmrg/orca {frag_name}.inp > {frag_name}.out
 """
-        slurm.write_batch(batch_out, N, n, partition, mem_per_cpu, out_file, command)
+        slurm.write_batch(batch_out=batch_out, N=N, n=n, partition=partition, mem_per_cpu=mem_per_cpu, out_file=out_file, command=command)
 
 
