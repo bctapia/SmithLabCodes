@@ -1,0 +1,8 @@
+
+# ===TFB MASSES===
+mass 1 10.811
+mass 2 18.998
+
+# ===TFB COEFFICIENTS===
+pair_coeff 1     0.095 3.5814
+pair_coeff 2     0.060 3.1181

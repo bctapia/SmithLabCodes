@@ -1,0 +1,19 @@
+mass 1 14.007
+mass 2 12.011
+mass 3 12.011
+mass 4  1.008
+
+pair_modify mix arithmetic
+
+pair_coeff 1 1 0.17   3.250 # Rmin = 2^(1/6)*sigma
+pair_coeff 2 2 0.086  3.400
+pair_coeff 3 3 0.1094 3.400
+pair_coeff 4 4 0.0157 2.650
+
+bond_coeff 1 400 1.458
+bond_coeff 2 600 1.157
+bond_coeff 3 340 1.09
+
+angle_coeff 1 80 180
+angle_coeff 2 35 110
+angle_coeff 3 35 109.5

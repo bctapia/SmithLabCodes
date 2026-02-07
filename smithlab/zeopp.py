@@ -133,10 +133,11 @@ def setup_zeopp(lammps_in,
 
 def zeopp_command(
         zeopp_loc="./network",
-        cuc_file="system.cuc")
+        cuc_file="system.cuc",
         rad_file="radii.rad",
         mass_file="molwt.mass",
-        visvcoro="0.2"
+        visvcoro="0.2"):
+    return
 
 
 # we want to call zeopp as:
@@ -144,3 +145,109 @@ def zeopp_command(
 # -zvis "zeovis.out" -axs 1.8 "axs.out"
 
 #/home/gridsan/btapia/zeo++-0.3/network -ha -r radii.rad -mass molwt.mass -visVoro 0.2 system.cuc
+
+
+def cube2xyz(cube_in, xyz_out, d_spacing=None, d_min=0.0):
+
+    with open(cube_in, "r") as f:
+
+        _ = f.readline()
+        _ = f.readline()
+
+        # Line 3: natoms, origin
+        parts = f.readline().split()
+        natoms = int(parts[0])
+        origin = np.array(list(map(float, parts[1:4])), dtype=float)
+
+        # Line 4: nx and x-axis vector
+        parts = f.readline().split()
+        nx = int(parts[0])
+        ax = np.array(list(map(float, parts[1:4])), dtype=float)
+
+        # Line 5: ny and y-axis vector
+        parts = f.readline().split()
+        ny = int(parts[0])
+        by = np.array(list(map(float, parts[1:4])), dtype=float)
+
+        # Line 6: nz and z-axis vector
+        parts = f.readline().split()
+        nz = int(parts[0])
+        cz = np.array(list(map(float, parts[1:4])), dtype=float)
+
+        # Skip atom lines
+        for _ in range(natoms):
+            f.readline()
+
+        # Read all remaining volumetric values
+        vals = []
+        for line in f:
+            vals.extend(line.split())
+
+        vals = np.array(list(map(float, vals)), dtype=float)
+        ngrid = nx * ny * nz
+
+        if vals.size < ngrid:
+            raise ValueError(f"Not enough grid values: expected {ngrid}, got {vals.size}")
+        if vals.size > ngrid:
+            #raise ValueError(f"Too many grid values: expected {ngrid}, got {vals.size}")
+            vals = vals[:ngrid]
+
+    # Reshape to (nx, ny, nz); cube order is x outer, y middle, z inner
+    vals = vals.reshape((nx, ny, nz))
+
+    # ---- compute strides for downsampling ----
+    # Native step lengths (norm of grid vectors)
+    step_x = np.linalg.norm(ax)
+    step_y = np.linalg.norm(by)
+    step_z = np.linalg.norm(cz)
+
+    # Desired spacings: if None, keep native grid (stride = 1)
+    def compute_stride(desired, native):
+        if desired is None or desired <= 0:
+            return 1
+        factor = int(round(desired / native))
+        if factor < 1:
+            factor = 1
+        return factor
+
+    dx = d_spacing
+    dy = d_spacing
+    dz = d_spacing
+
+    stride_x = compute_stride(dx, step_x)
+    stride_y = compute_stride(dy, step_y)
+    stride_z = compute_stride(dz, step_z)
+
+    # Index arrays we will keep
+    ix_idx = np.arange(0, nx, stride_x, dtype=int)
+    iy_idx = np.arange(0, ny, stride_y, dtype=int)
+    iz_idx = np.arange(0, nz, stride_z, dtype=int)
+
+    # Subsample distances without building the full big coords array first
+    vals_sub = vals[np.ix_(ix_idx, iy_idx, iz_idx)]  # shape (nx', ny', nz')
+
+    # Build coords only for kept indices
+    ix_grid, iy_grid, iz_grid = np.meshgrid(ix_idx, iy_idx, iz_idx, indexing="ij")
+
+    # r = origin + ix*ax + iy*by + iz*cz
+    coords_sub = (
+        origin[None, None, None, :]
+        + ix_grid[..., None] * ax[None, None, None, :]
+        + iy_grid[..., None] * by[None, None, None, :]
+        + iz_grid[..., None] * cz[None, None, None, :]
+    )  # (nx', ny', nz', 3)
+
+    # Flatten
+    coords_flat = coords_sub.reshape(-1, 3)
+    vals_flat = vals_sub.reshape(-1)
+
+    # ---- FILTER: keep only distances >= dmin ----
+    mask = vals_flat >= d_min
+    coords_keep = coords_flat[mask]
+    vals_keep = vals_flat[mask][:, None]
+
+    data = np.hstack((coords_keep, vals_keep))
+
+    header = "x y z distance"
+    np.savetxt(xyz_out, data, fmt="%.6f", header=header)
+    return
