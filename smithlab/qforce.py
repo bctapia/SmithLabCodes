@@ -65,7 +65,7 @@ def slurm_fragments(missing_in, N, n, partition, mem_per_cpu):
     for i, frag in enumerate(frags):
 
         frag_name = frag.strip()
-        frag_split = f"{i}_{frag_name.split('~')[0]}"
+        #frag_split = f"{i}_{frag_name.split('~')[0]}"
 
         # Check if we need to modify number of procs
         file_path = missing_in_path.parent / f"{frag_name}.inp"
@@ -96,8 +96,8 @@ def slurm_fragments(missing_in, N, n, partition, mem_per_cpu):
                 file.writelines(lines)
 
 
-        batch_out = f"{frag_split}.sh"
-        out_file = f"{frag_split}.txtout"
+        batch_out = f"{frag_name}.sh"
+        out_file = f"{frag_name}.txtout"
 
         command=rf"""
 . /etc/profile.d/modules.sh
