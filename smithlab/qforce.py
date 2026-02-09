@@ -65,6 +65,7 @@ def slurm_fragments(missing_in, N, n, partition, mem_per_cpu):
     for i, frag in enumerate(frags):
 
         frag_name = frag.strip()
+        frag_name_ident = f"{i}_{frag_name}" 
         #frag_split = f"{i}_{frag_name.split('~')[0]}"
 
         # Check if we need to modify number of procs
