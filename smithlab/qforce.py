@@ -97,8 +97,8 @@ def slurm_fragments(missing_in, N, n, partition, mem_per_cpu):
                 file.writelines(lines)
 
 
-        batch_out = f"{frag_name}.sh"
-        out_file = f"{frag_name}.txtout"
+        batch_out = f"{frag_name_ident}.sh"
+        out_file = f"{frag_name_ident}.txtout"
 
         command=rf"""
 . /etc/profile.d/modules.sh
