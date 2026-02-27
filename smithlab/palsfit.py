@@ -64,7 +64,7 @@ class RFCFile:
         """
         Find and parse the resolution block.
         """
-    
+
         # find header line index
         header_idx = None
         for i, raw in enumerate(self._raw_lines):
@@ -237,24 +237,4 @@ class RFCFile:
             )
 
         return out_file, stdout
-
-
-
-def pos19():
-    """runs pos19.exe
-    """
-    pass
-
-def res19():
-    """runs res19.exe
-    """
-    pass
-
-# rfc = RFCFile.read("input.rfc")
-
-# print(rfc.temperature)        # Access like attribute
-# rfc.temperature = "350"       # Modify
-# rfc.settings["pressure"] = 5  # Also works
-
-# rfc.write("modified.rfc")
 
