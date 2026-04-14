@@ -43,14 +43,14 @@ def lammps_dihedrals(lammps_in, lammps_out, update_title=True):
                     f.writelines(line)
 
 
-def intermol(intermol, lmp_in, pair_style, dihedral_remove=True, fix=True):
+def intermol(intermol, lmp_data, lmp_in, pair_style, dihedral_remove=True, fix=True):
     """
     runs intermol on the data file
     """
 
     if dihedral_remove:
-        os.rename(lmp_in, "lmp_in_temp_renamed.lmps")
-        lammps_dihedrals("lmp_in_temp_renamed.lmps", lmp_in)
+        os.rename(lmp_data, "lmp_in_temp_renamed.lmps")
+        lammps_dihedrals("lmp_in_temp_renamed.lmps", lmp_data)
 
     cmd = (f'python3 {intermol} --lmp_in {lmp_in} --gromacs -ls "{pair_style}"')
 
@@ -67,8 +67,8 @@ def intermol(intermol, lmp_in, pair_style, dihedral_remove=True, fix=True):
 
     if dihedral_remove:
         # switching names back
-        os.rename(lmp_in, f"{lmp_in}_no_dihedrals.lmps")
-        os.rename("lmp_in_temp_renamed.lmps", f"{lmp_in}")
+        os.rename(lmp_data, f"{lmp_data}_no_dihedrals.lmps")
+        os.rename("lmp_in_temp_renamed.lmps", f"{lmp_data}")
 
 
 # intermol does a lot of the work but there are some things we still need to iron out
