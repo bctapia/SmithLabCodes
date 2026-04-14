@@ -52,11 +52,7 @@ def intermol(intermol, lmp_in, pair_style, dihedral_remove=True, fix=True):
         os.rename(lmp_in, "lmp_in_temp_renamed.lmps")
         lammps_dihedrals("lmp_in_temp_renamed.lmps", lmp_in)
 
-    cmd = (
-        "python3 /mnt/c/Users/btapi/OneDrive/Documents/GitHub/InterMol/intermol/convert.py "
-        "--lmp_in /home/btapia/intermol_test/equil.in --gromacs "  # TODO generalize
-        '-ls "pair_style cut/coul/long 15"'  # TODO generalize
-    )
+    cmd = (f'python3 {intermol} --lmp_in {lmp_in} --gromacs -ls "{pair_style}"')
 
     result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
 
