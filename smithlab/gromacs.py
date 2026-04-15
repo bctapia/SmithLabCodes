@@ -123,12 +123,8 @@ def add_fourier_dihedrals(lammps_in, top_in):
     in_dihedral_coeffs = False
     in_dihedrals = False
 
-    dihedral_types = []
-    dihedral_K = []
-    dihedral_n1 = []
-    dihedral_d1 = []
+    dihedral_coeffs = {}
 
-    specific_dihedral_index = []
     specific_dihedral_types = []
     atom_1 = []
     atom_2 = []
@@ -144,11 +140,13 @@ def add_fourier_dihedrals(lammps_in, top_in):
             continue
         elif stripped.startswith("Dihedral Coeffs"):
             in_dihedral_coeffs = True
+            in_dihedrals = False
             continue
         elif stripped.startswith("Atoms"):
             in_dihedral_coeffs = False
             continue
         elif stripped.startswith("Dihedrals"):
+            in_dihedral_coeffs = False
             in_dihedrals = True
             continue
         elif stripped.startswith("Impropers"):
@@ -156,17 +154,23 @@ def add_fourier_dihedrals(lammps_in, top_in):
             continue
 
         if in_dihedral_coeffs:
-            if int(columns[1]) != 1:
-                print("sorry, only funct=1 is supported right now, cannot continue :(")
-                break
+            dihedral_type = int(columns[0])
+            m = int(columns[1])
+            expected_len = 2 + 3 * m
+            if len(columns) < expected_len:
+                raise ValueError(f"Dihedral type {dihedral_type} says it has {m} Fourier terms, but {len(columns) - 2} coefficient fields were found.")
+            
+            coeffs = []
+            for term_idx in range(m):
+                base = 2 + 3 * term_idx
+                K = float(columns[base])
+                n = int(float(columns[base + 1]))
+                d = float(columns[base + 2])
+                coeffs.append((K, n, d))
 
-            dihedral_types.append(int(columns[0]))
-            dihedral_K.append(float(columns[2]))
-            dihedral_n1.append(float(columns[3]))
-            dihedral_d1.append(float(columns[4]))
+            dihedral_coeffs[dihedral_type] = coeffs
 
         if in_dihedrals:
-            specific_dihedral_index.append(columns[0])
             specific_dihedral_types.append(int(columns[1]))
             atom_1.append(columns[2])
             atom_2.append(columns[3])
@@ -184,17 +188,16 @@ def add_fourier_dihedrals(lammps_in, top_in):
     inserted_lines = ["[ dihedrals ]\n;   ai   aj   ak   al   funct   phi   K     mult.\n"]
 
     for i, specific_d_type in enumerate(specific_dihedral_types):
-
-        index_use = None
-        # look through the rtype array:
-        for j, d_type in enumerate(dihedral_types):
-            if specific_d_type == d_type:
-                index_use = j
-                break
+        if specific_d_type not in dihedral_coeffs:
+            raise ValueError(f"Dihedral type {specific_d_type} found in dihedrals section but not in dihedral coefficients")
 
         # no factor of 2 used here
-        line = f"     {atom_1[i]:<6}{atom_2[i]:<6}{atom_3[i]:<6}{atom_4[i]:<6}  1  {dihedral_d1[index_use]:<.15} {dihedral_K[index_use]*4.184:<.15} {int(dihedral_n1[index_use])}\n"
-        inserted_lines.append(line)
+        for K, n, d in dihedral_coeffs[specific_d_type]:
+            line = (
+                f"     {atom_1[i]:<6}{atom_2[i]:<6}{atom_3[i]:<6}{atom_4[i]:<6}"
+                f"  1  {d:<18.10f}{K * 4.184:<18.10f} {n}\n"
+            )
+            inserted_lines.append(line)
 
     lines[insert_index:insert_index] = inserted_lines
 
