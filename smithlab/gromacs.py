@@ -199,6 +199,7 @@ def add_fourier_dihedrals(lammps_in, top_in):
             )
             inserted_lines.append(line)
 
+    inserted_lines.append("\n")
     lines[insert_index:insert_index] = inserted_lines
 
     with open(top_in, "w", encoding="utf-8") as f:
