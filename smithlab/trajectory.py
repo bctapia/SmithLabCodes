@@ -161,9 +161,9 @@ def sq(
     data_file,
     dump_file,
     selection=None,
-    q_min_Ainv=0.0,
+    q_min_Ainv=0.4,
     q_max_Ainv=3.0,
-    bins=300,
+    bins=200,
     stride=1,
     output_file="sq.csv",
     num_proc=None

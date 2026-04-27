@@ -138,3 +138,9 @@ cd "$TMPDIR"
         slurm.write_batch(batch_out=batch_out, N=N, n=n, partition=partition, mem_per_cpu=mem_per_cpu, out_file=out_file, command=command)
 
 
+def gromacs_to_lammps():
+    """Converting a GROMACS topology file to a LAMMPS data file"""
+    # read the GROMACS itp, gas.gro, and gas.top files
+    # read LAMMPS data file
+
+    # the atom numbers must be the same!

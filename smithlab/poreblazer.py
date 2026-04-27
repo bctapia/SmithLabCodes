@@ -6,6 +6,7 @@ MIT License
 
 import os
 import numpy as np
+from pathlib import Path
 
 
 def write_xyz(lammps_in, xyz_out="system.xyz"):
@@ -146,6 +147,7 @@ def write_defaults(defaults="defaults.dat", settings=None):
 
 def write_input(lammps_in, input="input.dat", xyz_out="system.xyz"):
 
+    xyz_out = Path(xyz_out)
     count = 0
     with open(lammps_in, "r", encoding="utf-8") as file:
         lines = file.readlines()
@@ -168,7 +170,7 @@ def write_input(lammps_in, input="input.dat", xyz_out="system.xyz"):
             break
 
     with open(input, "w", encoding="utf-8") as file:
-        file.write(f"{xyz_out}\n{x_length} {y_length} {z_length}\n90 90 90")
+        file.write(f"{xyz_out.name}\n{x_length} {y_length} {z_length}\n90 90 90")
 
     return
 
@@ -185,7 +187,7 @@ def setup_pb(
     write_xyz(lammps_in, xyz)
     write_forcefield(lammps_in, ff_out)
     write_defaults(defaults, settings)
-    write_input(lammps_in, input_file, "system.xyz")  # TODO: allow for path if needed
+    write_input(lammps_in, input_file, xyz)
 
     return
 
