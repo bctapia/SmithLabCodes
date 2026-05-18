@@ -13,7 +13,7 @@ def write_batch(
             f"#!/bin/bash\n#SBATCH -N {N}\n#SBATCH -n {n}\n#SBATCH --partition={partition}\n"
         )
         if cpus_per_task is not None:
-            f.write(f"#SBATCH --cpus_per_task={cpus_per_task}\n")
+            f.write(f"#SBATCH --cpus-per-task={cpus_per_task}\n")
         if out_file is not None:
             f.write(f"#SBATCH -o {out_file}\n")
         if command:
