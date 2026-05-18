@@ -166,7 +166,8 @@ def sq(
     bins=200,
     stride=1,
     output_file="sq.csv",
-    num_proc=None
+    num_proc=None,
+    method="direct"
 ):
     """
     Compute isotropically-averaged static structure factor S(q) using freud.
@@ -203,9 +204,14 @@ def sq(
     print(f"Selected atoms: {N}")
     print(f"Frames: {u.trajectory.n_frames} (stride={stride})")
     freud.parallel.set_num_threads(nthreads=num_proc)
-    sf = freud.diffraction.StaticStructureFactorDirect(
-        bins=bins, k_min=q_min_Ainv, k_max=q_max_Ainv
-    )
+    if method=="direct":
+        sf = freud.diffraction.StaticStructureFactorDirect(
+            bins=bins, k_min=q_min_Ainv, k_max=q_max_Ainv
+        )
+    elif method=="debye":
+        sf = freud.diffraction.StaticStructureFactorDebye(
+            num_k_values=bins, k_min=q_min_Ainv, k_max=q_max_Ainv
+        )
 
     Sq_sum = np.zeros(bins, dtype=np.float64)
     nframes = 0
