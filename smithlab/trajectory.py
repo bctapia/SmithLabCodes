@@ -237,7 +237,11 @@ def sq(
     if nframes == 0:
         raise RuntimeError("No frames processed (check stride / trajectory).")
 
-    q = np.asarray(sf.bin_centers, dtype=np.float64).copy()
+    if method == "debye":
+        q = np.asarray(sf.k_values, dtype=np.float64).copy()
+    else:
+        q = np.asarray(sf.bin_centers, dtype=np.float64).copy()
+
     Sq = Sq_sum / nframes
 
     # crude "first peak" finder: first local maximum above q>0
