@@ -103,3 +103,107 @@ def change_charge_lammps(lmp_in, charge_in, lmp_out):
 
     with open(lmp_out, "w") as f:
         f.writelines(lmp_lines)
+
+
+def neutralize_lammps_charge(lmp_in, lmp_out, atom_types=None, charge_col=3, type_col=2):
+    """
+    Neutralize total charge in a LAMMPS data file by distributing the charge
+    correction across selected atom types.
+
+    Assumes atom_style full:
+        id mol type q x y z ...
+
+    Parameters
+    ----------
+    lmp_in : str or Path
+        Input LAMMPS data file.
+    lmp_out : str or Path
+        Output LAMMPS data file.
+    atom_types : None, int, or iterable of int
+        Atom types over which to distribute the correction.
+        If None, all atoms are used.
+    charge_col : int
+        Zero-based charge column. For atom_style full, q is column 3.
+    type_col : int
+        Zero-based atom type column. For atom_style full, type is column 2.
+    """
+
+    with open(lmp_in, "r") as f:
+        lmp_lines = f.readlines()
+
+    if atom_types is not None:
+        if isinstance(atom_types, int):
+            atom_types = {atom_types}
+        else:
+            atom_types = set(atom_types)
+
+    atom_line_indices = []
+    charges = []
+    types = []
+
+    in_atoms = False
+
+    for i, line in enumerate(lmp_lines):
+        stripped = line.strip()
+
+        if stripped.startswith("Atoms"):
+            in_atoms = True
+            continue
+
+        if in_atoms and stripped == "":
+            continue
+
+        if in_atoms and (
+            stripped.startswith("Bonds") or
+            stripped.startswith("Angles") or
+            stripped.startswith("Dihedrals") or
+            stripped.startswith("Impropers") or
+            stripped.endswith("Coeffs")
+            or stripped.startswith("Velocities")
+        ):
+            in_atoms = False
+            continue
+
+        if in_atoms:
+            parts = line.split()
+
+            if len(parts) <= max(charge_col, type_col):
+                continue
+
+            atom_line_indices.append(i)
+            types.append(int(parts[type_col]))
+            charges.append(float(parts[charge_col]))
+
+    charges = np.array(charges, dtype=float)
+    types = np.array(types, dtype=int)
+
+    if len(charges) == 0:
+        raise ValueError("No atom lines found in Atoms section.")
+
+    if atom_types is None:
+        selected = np.ones(len(charges), dtype=bool)
+    else:
+        selected = np.isin(types, list(atom_types))
+
+    if not np.any(selected):
+        raise ValueError(f"No atoms found with atom_types={atom_types}")
+
+    total_charge = charges.sum()
+    correction_per_atom = -total_charge / selected.sum()
+
+    charges[selected] += correction_per_atom
+
+    for local_idx, line_idx in enumerate(atom_line_indices):
+        parts = lmp_lines[line_idx].split()
+        parts[charge_col] = f"{charges[local_idx]:.6f}"
+        lmp_lines[line_idx] = " ".join(parts) + "\n"
+
+    with open(lmp_out, "w") as f:
+        f.writelines(lmp_lines)
+
+    return {
+        "initial_total_charge": total_charge,
+        "final_total_charge": charges.sum(),
+        "n_corrected_atoms": int(selected.sum()),
+        "correction_per_atom": correction_per_atom,
+    }
