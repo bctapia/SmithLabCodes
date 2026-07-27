@@ -446,6 +446,7 @@ def msd(
         dump_file,
         topology_format="DATA",
         format="LAMMPSDUMP",
+        atom_style="id resid type charge x y z", # full
     )
 
     print("===Topology Info===")
@@ -475,15 +476,15 @@ def msd(
 
     if atom_selection is not None:
         sel = u.select_atoms(atom_selection)
-        molecules = sel.split("molecule")
-        print(f"Computing MSD for {len(molecules)} molecules.")
+        molecules = sel.split("residue")
+        print(f"Computing MSD for {len(molecules)} molecules ({sel.n_atoms} atoms).")
     else:
         sel = u.select_atoms("all")
-        molecules = sel.split("molecule")
-        print(f"Computing MSD for all {len(molecules)} molecules.")
+        molecules = sel.split("residue")
+        print(f"Computing MSD for all {len(molecules)} molecules ({sel.n_atoms} atoms).")
 
     assert np.all(sel.masses > 0), "Masses not loaded from DATA file"
-    
+
     n_frames = u.trajectory.n_frames
     n_mol = len(molecules)
 
