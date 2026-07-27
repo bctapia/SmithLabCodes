@@ -456,8 +456,6 @@ def msd(
     if u.trajectory.n_frames < 2:
         raise RuntimeError("Trajectory must contain at least two frames.")
 
-    assert np.all(sel.masses > 0), "Masses not loaded from DATA file"
-
     # ------------------------------------------
     # Determine sampling interval
     # ------------------------------------------
@@ -480,9 +478,12 @@ def msd(
         molecules = sel.split("molecule")
         print(f"Computing MSD for {len(molecules)} molecules.")
     else:
-        molecules = u.atoms.split("molecule")
+        sel = u.select_atoms("all")
+        molecules = sel.split("molecule")
         print(f"Computing MSD for all {len(molecules)} molecules.")
 
+    assert np.all(sel.masses > 0), "Masses not loaded from DATA file"
+    
     n_frames = u.trajectory.n_frames
     n_mol = len(molecules)
 
