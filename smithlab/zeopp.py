@@ -341,11 +341,11 @@ def plot_cube(xyz_in, keep_every=1, d_lo=None, d_hi=None, vmin=None, vmax=None, 
 
 
     cbar = plt.colorbar(sc, ax=ax, pad=0.1)
-    cbar.set_label("distance")
+    cbar.set_label("Distance to closest atom (Å)")
 
-    ax.set_xlabel("x")
-    ax.set_ylabel("y")
-    ax.set_zlabel("z")
+    #ax.set_xlabel("x")
+    #ax.set_ylabel("y")
+    #ax.set_zlabel("z")
 
     plt.tight_layout()
     if png_out:

@@ -21,7 +21,7 @@ def c2_bondvec(
         data_file: LAMMPS data file
         dump_file: LAMMPS dump file
             Trajectory MUST be unwrapped. If trajectory is wrapped but image flags are present, ensure MDAnalysis is properly unwrapping the coordinates
-        timestep_fs: Timestep of trajectory dump in fs. Note that this is NOT the timestep of MD integration (unless you dump every step)
+        timestep_fs: Timestep MD integration
         max_lag_ps: The maximum time separation of each calculation
         stride: How many timestep_fs to stride between collecting u(t0+t) (=1 means analyze at every timestep)
         origin_stride_ps: How many timestep_fs to stride before starting another u(t0) ensemble average (=1 means average using every timestep)
@@ -410,4 +410,187 @@ def fs_self(
         header="time_ps,Fs_q,navg_origins",
         comments="",
     )
+    print(f"Done. Wrote {output_file}")
+
+
+def msd(
+    data_file,
+    dump_file,
+    timestep_fs=1.0,
+    max_lag_ps=20000.0,
+    origin_stride_ps=1.0,
+    atom_selection=None,
+    output_file="msd.csv",
+):
+    """
+    Compute the mean-squared displacement (MSD) using multiple time origins.
+
+    MSD(t) = <|r(t0+t)-r(t0)|^2>
+
+    Averaging is performed over both molecules and time origins.
+
+    Args:
+        data_file: LAMMPS DATA file.
+        dump_file: LAMMPS trajectory (coordinates should be unwrapped).
+        timestep_fs: MD timestep used in the simulation.
+        max_lag_ps: Maximum lag time to compute.
+        origin_stride_ps: Spacing between successive time origins.
+        atom_selection: MDAnalysis selection defining the molecules to analyze.
+                        (e.g. "type 11 12")
+        output_file: CSV output filename.
+    """
+
+    print("Loading universe...")
+    u = mda.Universe(
+        data_file,
+        dump_file,
+        topology_format="DATA",
+        format="LAMMPSDUMP",
+    )
+
+    print("===Topology Info===")
+    print("Atoms:", u.atoms.n_atoms)
+    print("Frames:", u.trajectory.n_frames)
+    print("===================")
+
+    if u.trajectory.n_frames < 2:
+        raise RuntimeError("Trajectory must contain at least two frames.")
+
+    assert np.all(sel.masses > 0), "Masses not loaded from DATA file"
+
+    # ------------------------------------------
+    # Determine sampling interval
+    # ------------------------------------------
+
+    u.trajectory[0]
+    t0 = u.trajectory.time
+    u.trajectory[1]
+    t1 = u.trajectory.time
+
+    dt_step = t1 - t0
+    dt_fs = dt_step * timestep_fs
+    dt_ps = dt_fs / 1000.0
+
+    # ------------------------------------------
+    # Molecule selection
+    # ------------------------------------------
+
+    if atom_selection is not None:
+        sel = u.select_atoms(atom_selection)
+        molecules = sel.split("molecule")
+        print(f"Computing MSD for {len(molecules)} molecules.")
+    else:
+        molecules = u.atoms.split("molecule")
+        print(f"Computing MSD for all {len(molecules)} molecules.")
+
+    n_frames = u.trajectory.n_frames
+    n_mol = len(molecules)
+
+    if n_mol == 0:
+        raise RuntimeError("No molecules found.")
+
+    # ------------------------------------------
+    # Lag settings
+    # ------------------------------------------
+
+    max_lag_req = int(round(max_lag_ps / dt_ps))
+    max_lag = min(max_lag_req, n_frames - 1)
+
+    origin_stride = max(1, int(round(origin_stride_ps / dt_ps)))
+
+    print(f"Frame spacing       : {dt_ps:.4f} ps")
+    print(f"Maximum lag         : {max_lag} frames ({max_lag*dt_ps:.2f} ps)")
+    print(f"Origin stride       : {origin_stride} frames ({origin_stride*dt_ps:.2f} ps)")
+
+    # ------------------------------------------
+    # Compute COM trajectory
+    # ------------------------------------------
+
+    print("Computing center-of-mass trajectories...")
+
+    com = np.zeros((n_frames, n_mol, 3), dtype=np.float64)
+
+    for iframe, ts in enumerate(u.trajectory):
+
+        for imol, mol in enumerate(molecules):
+            com[iframe, imol] = mol.center_of_mass()
+
+        if iframe % 500 == 0 and iframe > 0:
+            print(f"  Frame {iframe}/{n_frames}")
+
+    # ------------------------------------------
+    # Check for periodic boundary jumps
+    # ------------------------------------------
+
+    print("Checking COM continuity...")
+
+    dcom = com[1:] - com[:-1]
+
+    jumps = np.linalg.norm(dcom, axis=2)
+
+    max_jump = np.max(jumps)
+    mean_jump = np.mean(jumps)
+
+    print(f"Maximum single-frame COM displacement: {max_jump:.3f} Å")
+    print(f"Average single-frame COM displacement: {mean_jump:.3f} Å")
+
+    if max_jump > 10.0:
+        bad = np.argwhere(jumps > 10.0)
+
+        print("\nWARNING: Possible wrapped coordinates detected!")
+        print(f"Found {len(bad)} suspicious jumps.")
+
+        for frame, mol in bad[:10]:
+            print(
+                f"  Molecule {mol}, "
+                f"frame {frame}->{frame+1}, "
+                f"jump={jumps[frame,mol]:.2f} Å"
+            )
+
+        print(
+            "Check that LAMMPS dump contains xu yu zu "
+            "or apply an unwrapping transformation."
+        )
+    else:
+        print("COM trajectory appears continuous.")
+
+    # ------------------------------------------
+    # Compute MSD
+    # ------------------------------------------
+
+    print("Computing MSD...")
+
+    msd_vals = np.zeros(max_lag + 1)
+    n_origins = np.zeros(max_lag + 1, dtype=int)
+
+    for lag in range(max_lag + 1):
+
+        origins = np.arange(0, n_frames - lag, origin_stride)
+
+        dr = com[origins + lag] - com[origins]
+
+        sq = np.sum(dr**2, axis=2)
+
+        msd_vals[lag] = np.mean(sq)
+        n_origins[lag] = len(origins)
+
+        if lag % 200 == 0 and lag > 0:
+            print(f"  Lag {lag}/{max_lag}")
+
+    # ------------------------------------------
+    # Save
+    # ------------------------------------------
+
+    times_ps = np.arange(max_lag + 1) * dt_ps
+
+    out = np.column_stack((times_ps, msd_vals, n_origins))
+
+    np.savetxt(
+        output_file,
+        out,
+        delimiter=",",
+        header="time_ps,MSD_A2,n_origins",
+        comments="",
+    )
+
     print(f"Done. Wrote {output_file}")
