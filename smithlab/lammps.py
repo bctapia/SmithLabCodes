@@ -6,6 +6,7 @@ MIT License
 
 from collections import defaultdict
 from pathlib import Path
+import re
 import numpy as np
 
 
@@ -134,6 +135,1102 @@ def reorder_sections(lammps_in, lammps_out):
 def setup_lammps(lammps_in, lammps_out, lammps_ref):
     reformat(lammps_in, lammps_out, lammps_ref)
     reorder_sections(lammps_out, lammps_out)
+
+
+def add_xyz_atoms_to_lammps_data(
+    lammps_in,
+    xyz_in,
+    lammps_out,
+    timestep,
+    label_to_type,
+    keep_existing_atoms=False,
+    atom_style="full",
+    charge=0.0,
+    expand_box=True,
+    padding=0.0,
+):
+    """
+    Add atoms from a selected timestep of an XYZ-like trajectory to a LAMMPS data file.
+
+    Each newly added atom gets its own molecule ID when atom_style is "full" or
+    "molecular".
+
+    Parameters
+    ----------
+    lammps_in : str
+        Input LAMMPS data file.
+
+    xyz_in : str
+        XYZ-like trajectory file with frames beginning with lines like:
+
+            MC_STEP: 2000000
+
+        followed by atom coordinate lines:
+
+            A0  x y z
+            C   x y z
+
+    lammps_out : str
+        Output LAMMPS data file.
+
+    timestep : int
+        Timestep to extract from xyz_in.
+
+    label_to_type : dict
+        Mapping from XYZ labels to LAMMPS atom types.
+
+        Example:
+            {"A0": 1}
+
+        This adds all A0 atoms as atom type 1.
+
+    keep_existing_atoms : bool, default True
+        If True, keep atoms already in the LAMMPS data file and append new atoms.
+
+        If False, remove existing atoms, velocities, bonds, angles, dihedrals,
+        and impropers, then add only selected XYZ atoms.
+
+    atom_style : str, default "full"
+        Atom style used for writing the Atoms section.
+
+        Supported:
+            "full":
+                atom-ID molecule-ID atom-type charge x y z
+
+            "molecular":
+                atom-ID molecule-ID atom-type x y z
+
+            "atomic":
+                atom-ID atom-type x y z
+
+            "charge":
+                atom-ID atom-type charge x y z
+
+    charge : float, default 0.0
+        Charge assigned to newly added atoms for atom styles that include charge.
+
+    expand_box : bool, default True
+        If True, expand the simulation box to contain all output atoms.
+
+    padding : float, default 0.0
+        Extra padding added to the expanded box.
+
+    Notes
+    -----
+    This function only adds atoms. It does not add bonds, angles, dihedrals,
+    or impropers for the newly added atoms.
+    """
+
+    section_names = [
+        "Masses",
+        "Pair Coeffs",
+        "Bond Coeffs",
+        "Angle Coeffs",
+        "Dihedral Coeffs",
+        "Improper Coeffs",
+        "Atoms",
+        "Velocities",
+        "Bonds",
+        "Angles",
+        "Dihedrals",
+        "Impropers",
+    ]
+
+    count_patterns = {
+        "atoms": r"^\s*(\d+)\s+atoms\b",
+        "bonds": r"^\s*(\d+)\s+bonds\b",
+        "angles": r"^\s*(\d+)\s+angles\b",
+        "dihedrals": r"^\s*(\d+)\s+dihedrals\b",
+        "impropers": r"^\s*(\d+)\s+impropers\b",
+        "atom_types": r"^\s*(\d+)\s+atom\s+types\b",
+        "bond_types": r"^\s*(\d+)\s+bond\s+types\b",
+        "angle_types": r"^\s*(\d+)\s+angle\s+types\b",
+        "dihedral_types": r"^\s*(\d+)\s+dihedral\s+types\b",
+        "improper_types": r"^\s*(\d+)\s+improper\s+types\b",
+    }
+
+    def strip_comment(line):
+        return line.split("#", 1)[0].strip()
+
+    def is_section_header(line):
+        clean = strip_comment(line)
+        return clean in section_names
+
+    def parse_lammps_data(filename):
+        with open(filename, "r") as f:
+            raw_lines = [line.rstrip("\n") for line in f]
+
+        header_lines = []
+        sections = {name: [] for name in section_names}
+
+        current_section = None
+        found_first_section = False
+
+        for line in raw_lines:
+            if is_section_header(line):
+                current_section = strip_comment(line)
+                found_first_section = True
+                continue
+
+            if not found_first_section:
+                header_lines.append(line)
+            else:
+                if current_section is not None:
+                    if line.strip() != "":
+                        sections[current_section].append(line)
+
+        counts = {key: 0 for key in count_patterns}
+
+        for line in header_lines:
+            for key, pattern in count_patterns.items():
+                m = re.search(pattern, line)
+                if m:
+                    counts[key] = int(m.group(1))
+
+        box = {
+            "xlo": None,
+            "xhi": None,
+            "ylo": None,
+            "yhi": None,
+            "zlo": None,
+            "zhi": None,
+        }
+
+        for line in header_lines:
+            parts = line.split()
+            if len(parts) >= 4:
+                if parts[2] == "xlo" and parts[3] == "xhi":
+                    box["xlo"] = float(parts[0])
+                    box["xhi"] = float(parts[1])
+                elif parts[2] == "ylo" and parts[3] == "yhi":
+                    box["ylo"] = float(parts[0])
+                    box["yhi"] = float(parts[1])
+                elif parts[2] == "zlo" and parts[3] == "zhi":
+                    box["zlo"] = float(parts[0])
+                    box["zhi"] = float(parts[1])
+
+        return {
+            "header_lines": header_lines,
+            "sections": sections,
+            "counts": counts,
+            "box": box,
+        }
+
+    def parse_xyz_timestep(filename, target_timestep):
+        selected_atoms = []
+        in_target_frame = False
+        found_target = False
+
+        with open(filename, "r") as f:
+            for raw_line in f:
+                line = raw_line.strip()
+
+                if line == "":
+                    continue
+
+                if line.startswith("MC_STEP"):
+                    parts = line.replace(":", " ").split()
+
+                    step_value = None
+                    for p in parts:
+                        try:
+                            step_value = int(p)
+                            break
+                        except ValueError:
+                            pass
+
+                    if step_value is None:
+                        raise ValueError(f"Could not parse timestep from line: {line}")
+
+                    if step_value == target_timestep:
+                        in_target_frame = True
+                        found_target = True
+                        selected_atoms = []
+                    else:
+                        if in_target_frame:
+                            break
+                        in_target_frame = False
+
+                    continue
+
+                if in_target_frame:
+                    parts = line.split()
+                    if len(parts) < 4:
+                        continue
+
+                    label = parts[0]
+
+                    try:
+                        x = float(parts[1])
+                        y = float(parts[2])
+                        z = float(parts[3])
+                    except ValueError:
+                        continue
+
+                    selected_atoms.append(
+                        {
+                            "label": label,
+                            "x": x,
+                            "y": y,
+                            "z": z,
+                        }
+                    )
+
+        if not found_target:
+            raise ValueError(f"Timestep {target_timestep} was not found in {filename}.")
+
+        return selected_atoms
+
+    def count_valid_lines(lines):
+        n = 0
+        for line in lines:
+            clean = strip_comment(line)
+            if clean:
+                n += 1
+        return n
+
+    def max_atom_id(atom_lines):
+        max_id = 0
+
+        for line in atom_lines:
+            clean = strip_comment(line)
+            if not clean:
+                continue
+
+            parts = clean.split()
+            if len(parts) < 1:
+                continue
+
+            try:
+                max_id = max(max_id, int(parts[0]))
+            except ValueError:
+                pass
+
+        return max_id
+
+    def max_molecule_id(atom_lines, atom_style):
+        """
+        Return max molecule ID from Atoms lines.
+
+        For atom_style='full':
+            atom-ID mol-ID atom-type charge x y z
+
+        For atom_style='molecular':
+            atom-ID mol-ID atom-type x y z
+
+        For atom_style='atomic' or 'charge', molecule IDs are not present.
+        """
+        if atom_style not in ["full", "molecular"]:
+            return 0
+
+        max_mol = 0
+
+        for line in atom_lines:
+            clean = strip_comment(line)
+            if not clean:
+                continue
+
+            parts = clean.split()
+            if len(parts) < 2:
+                continue
+
+            try:
+                max_mol = max(max_mol, int(parts[1]))
+            except ValueError:
+                pass
+
+        return max_mol
+
+    def make_atom_line(atom_id, atom_type, x, y, z, mol_id=None):
+        if atom_style == "full":
+            if mol_id is None:
+                raise ValueError("mol_id is required for atom_style='full'.")
+
+            return (
+                f"{atom_id:d} {mol_id:d} {atom_type:d} "
+                f"{charge:.8f} {x:.8f} {y:.8f} {z:.8f}"
+            )
+
+        elif atom_style == "molecular":
+            if mol_id is None:
+                raise ValueError("mol_id is required for atom_style='molecular'.")
+
+            return (
+                f"{atom_id:d} {mol_id:d} {atom_type:d} "
+                f"{x:.8f} {y:.8f} {z:.8f}"
+            )
+
+        elif atom_style == "atomic":
+            return f"{atom_id:d} {atom_type:d} {x:.8f} {y:.8f} {z:.8f}"
+
+        elif atom_style == "charge":
+            return (
+                f"{atom_id:d} {atom_type:d} {charge:.8f} "
+                f"{x:.8f} {y:.8f} {z:.8f}"
+            )
+
+        else:
+            raise ValueError(
+                "Unsupported atom_style. Use one of: "
+                "'full', 'molecular', 'atomic', 'charge'."
+            )
+
+    def parse_atom_xyz_from_lammps_line(line, atom_style):
+        clean = strip_comment(line)
+        if not clean:
+            return None
+
+        parts = clean.split()
+
+        try:
+            if atom_style == "full":
+                if len(parts) < 7:
+                    return None
+                return float(parts[4]), float(parts[5]), float(parts[6])
+
+            elif atom_style == "molecular":
+                if len(parts) < 6:
+                    return None
+                return float(parts[3]), float(parts[4]), float(parts[5])
+
+            elif atom_style == "atomic":
+                if len(parts) < 5:
+                    return None
+                return float(parts[2]), float(parts[3]), float(parts[4])
+
+            elif atom_style == "charge":
+                if len(parts) < 6:
+                    return None
+                return float(parts[3]), float(parts[4]), float(parts[5])
+
+            else:
+                return None
+
+        except ValueError:
+            return None
+
+    def write_section(f, name, lines):
+        clean_lines = []
+
+        for line in lines:
+            if strip_comment(line):
+                clean_lines.append(line)
+
+        if len(clean_lines) == 0:
+            return
+
+        f.write(f"\n{name}\n\n")
+        for line in clean_lines:
+            f.write(f"{line}\n")
+
+    if atom_style not in ["full", "molecular", "atomic", "charge"]:
+        raise ValueError(
+            "Unsupported atom_style. Use one of: "
+            "'full', 'molecular', 'atomic', 'charge'."
+        )
+
+    data = parse_lammps_data(lammps_in)
+    sections = data["sections"]
+    counts = data["counts"]
+    box = data["box"]
+
+    xyz_atoms = parse_xyz_timestep(xyz_in, timestep)
+
+    atoms_to_add = []
+    for atom in xyz_atoms:
+        label = atom["label"]
+
+        if label in label_to_type:
+            atom_type = int(label_to_type[label])
+
+            atoms_to_add.append(
+                {
+                    "label": label,
+                    "type": atom_type,
+                    "x": atom["x"],
+                    "y": atom["y"],
+                    "z": atom["z"],
+                }
+            )
+
+    if keep_existing_atoms:
+        output_atoms = list(sections["Atoms"])
+        next_atom_id = max_atom_id(output_atoms) + 1
+    else:
+        output_atoms = []
+        next_atom_id = 1
+
+        sections["Velocities"] = []
+        sections["Bonds"] = []
+        sections["Angles"] = []
+        sections["Dihedrals"] = []
+        sections["Impropers"] = []
+
+        counts["bonds"] = 0
+        counts["angles"] = 0
+        counts["dihedrals"] = 0
+        counts["impropers"] = 0
+
+    if atom_style in ["full", "molecular"]:
+        next_molecule_id = max_molecule_id(output_atoms, atom_style) + 1
+    else:
+        next_molecule_id = None
+
+    for atom in atoms_to_add:
+        if atom_style in ["full", "molecular"]:
+            mol_id = next_molecule_id
+            next_molecule_id += 1
+        else:
+            mol_id = None
+
+        atom_line = make_atom_line(
+            next_atom_id,
+            atom["type"],
+            atom["x"],
+            atom["y"],
+            atom["z"],
+            mol_id=mol_id,
+        )
+
+        output_atoms.append(atom_line)
+        next_atom_id += 1
+
+    sections["Atoms"] = output_atoms
+    counts["atoms"] = count_valid_lines(sections["Atoms"])
+
+    if atoms_to_add:
+        max_added_type = max(atom["type"] for atom in atoms_to_add)
+        counts["atom_types"] = max(counts["atom_types"], max_added_type)
+
+    if not keep_existing_atoms:
+        counts["bonds"] = 0
+        counts["angles"] = 0
+        counts["dihedrals"] = 0
+        counts["impropers"] = 0
+
+    if expand_box and atoms_to_add:
+        xs = []
+        ys = []
+        zs = []
+
+        for line in sections["Atoms"]:
+            xyz = parse_atom_xyz_from_lammps_line(line, atom_style)
+            if xyz is not None:
+                x, y, z = xyz
+                xs.append(x)
+                ys.append(y)
+                zs.append(z)
+
+        if xs:
+            if box["xlo"] is None:
+                box["xlo"] = min(xs) - padding
+            else:
+                box["xlo"] = min(box["xlo"], min(xs) - padding)
+
+            if box["xhi"] is None:
+                box["xhi"] = max(xs) + padding
+            else:
+                box["xhi"] = max(box["xhi"], max(xs) + padding)
+
+            if box["ylo"] is None:
+                box["ylo"] = min(ys) - padding
+            else:
+                box["ylo"] = min(box["ylo"], min(ys) - padding)
+
+            if box["yhi"] is None:
+                box["yhi"] = max(ys) + padding
+            else:
+                box["yhi"] = max(box["yhi"], max(ys) + padding)
+
+            if box["zlo"] is None:
+                box["zlo"] = min(zs) - padding
+            else:
+                box["zlo"] = min(box["zlo"], min(zs) - padding)
+
+            if box["zhi"] is None:
+                box["zhi"] = max(zs) + padding
+            else:
+                box["zhi"] = max(box["zhi"], max(zs) + padding)
+
+    if box["xlo"] is None:
+        box["xlo"], box["xhi"] = -10.0, 10.0
+    if box["ylo"] is None:
+        box["ylo"], box["yhi"] = -10.0, 10.0
+    if box["zlo"] is None:
+        box["zlo"], box["zhi"] = -10.0, 10.0
+
+    with open(lammps_out, "w") as f:
+        f.write("LAMMPS data file modified by add_xyz_atoms_to_lammps_data\n\n")
+
+        f.write(f"{counts['atoms']} atoms\n")
+        f.write(f"{counts['bonds']} bonds\n")
+        f.write(f"{counts['angles']} angles\n")
+        f.write(f"{counts['dihedrals']} dihedrals\n")
+        f.write(f"{counts['impropers']} impropers\n\n")
+
+        f.write(f"{counts['atom_types']} atom types\n")
+        f.write(f"{counts['bond_types']} bond types\n")
+        f.write(f"{counts['angle_types']} angle types\n")
+
+        if counts["dihedral_types"] > 0:
+            f.write(f"{counts['dihedral_types']} dihedral types\n")
+
+        if counts["improper_types"] > 0:
+            f.write(f"{counts['improper_types']} improper types\n")
+
+        f.write("\n")
+        f.write(f"{box['xlo']:.8f} {box['xhi']:.8f} xlo xhi\n")
+        f.write(f"{box['ylo']:.8f} {box['yhi']:.8f} ylo yhi\n")
+        f.write(f"{box['zlo']:.8f} {box['zhi']:.8f} zlo zhi\n")
+
+        write_section(f, "Masses", sections["Masses"])
+        write_section(f, "Pair Coeffs", sections["Pair Coeffs"])
+        write_section(f, "Bond Coeffs", sections["Bond Coeffs"])
+        write_section(f, "Angle Coeffs", sections["Angle Coeffs"])
+        write_section(f, "Dihedral Coeffs", sections["Dihedral Coeffs"])
+        write_section(f, "Improper Coeffs", sections["Improper Coeffs"])
+
+        write_section(f, "Atoms", sections["Atoms"])
+        write_section(f, "Velocities", sections["Velocities"])
+
+        write_section(f, "Bonds", sections["Bonds"])
+        write_section(f, "Angles", sections["Angles"])
+        write_section(f, "Dihedrals", sections["Dihedrals"])
+        write_section(f, "Impropers", sections["Impropers"])
+
+def combine_data_files(
+    lammps_array_in,
+    lammps_out,
+    include_atoms=None,
+    include_velocities=None,
+):
+    """
+    Combine multiple LAMMPS data files into one.
+
+    Parameters
+    ----------
+    lammps_array_in : list[str]
+        List of input LAMMPS data file paths.
+
+    lammps_out : str
+        Output LAMMPS data file path.
+
+    include_atoms : list[bool] or None
+        Whether to include atoms and corresponding bonds, angles, dihedrals,
+        impropers from each input file.
+
+        If None, atoms/topology are included for all files.
+
+    include_velocities : list[bool] or None
+        Whether to include velocities from each input file.
+
+        If None, velocities are included for all files where atoms are included.
+
+    Notes
+    -----
+    This function assumes conventional LAMMPS data-file sections such as:
+
+        Masses
+        Pair Coeffs
+        Bond Coeffs
+        Angle Coeffs
+        Dihedral Coeffs
+        Improper Coeffs
+        Atoms
+        Velocities
+        Bonds
+        Angles
+        Dihedrals
+        Impropers
+
+    It preserves coefficient text after the first type-ID column, while offsetting
+    type IDs as needed.
+
+    Atom lines are assumed to have:
+
+        atom-ID molecule-ID atom-type ...
+
+    which is common for atom styles such as full, molecular, charge, etc.
+
+    Bond lines are assumed to have:
+
+        bond-ID bond-type atom1 atom2
+
+    Angle lines:
+
+        angle-ID angle-type atom1 atom2 atom3
+
+    Dihedral lines:
+
+        dihedral-ID dihedral-type atom1 atom2 atom3 atom4
+
+    Improper lines:
+
+        improper-ID improper-type atom1 atom2 atom3 atom4
+    """
+
+    lammps_array_in = list(lammps_array_in)
+    n_files = len(lammps_array_in)
+
+    if include_atoms is None:
+        include_atoms = [True] * n_files
+
+    if include_velocities is None:
+        include_velocities = [True] * n_files
+
+    if len(include_atoms) != n_files:
+        raise ValueError("include_atoms must have the same length as lammps_array_in.")
+
+    if len(include_velocities) != n_files:
+        raise ValueError("include_velocities must have the same length as lammps_array_in.")
+
+    section_names = [
+        "Masses",
+        "Pair Coeffs",
+        "Bond Coeffs",
+        "Angle Coeffs",
+        "Dihedral Coeffs",
+        "Improper Coeffs",
+        "Atoms",
+        "Velocities",
+        "Bonds",
+        "Angles",
+        "Dihedrals",
+        "Impropers",
+    ]
+
+    coeff_sections = {
+        "Masses": "atom_type",
+        "Pair Coeffs": "atom_type",
+        "Bond Coeffs": "bond_type",
+        "Angle Coeffs": "angle_type",
+        "Dihedral Coeffs": "dihedral_type",
+        "Improper Coeffs": "improper_type",
+    }
+
+    topology_sections = {
+        "Bonds": ("bond", "bond_type", 2),
+        "Angles": ("angle", "angle_type", 3),
+        "Dihedrals": ("dihedral", "dihedral_type", 4),
+        "Impropers": ("improper", "improper_type", 4),
+    }
+
+    def strip_comment(line):
+        return line.split("#", 1)[0].strip()
+
+    def split_comment(line):
+        if "#" in line:
+            body, comment = line.split("#", 1)
+            return body.rstrip(), " # " + comment.strip()
+        return line.rstrip(), ""
+
+    def is_section_header(line):
+        clean = strip_comment(line)
+        return clean in section_names
+
+    def parse_data_file(filename):
+        filename = Path(filename)
+
+        with open(filename, "r") as f:
+            raw_lines = f.readlines()
+
+        header_lines = []
+        sections = {name: [] for name in section_names}
+
+        current_section = None
+        found_first_section = False
+
+        for line in raw_lines:
+            stripped = line.strip()
+
+            if is_section_header(line):
+                current_section = strip_comment(line)
+                found_first_section = True
+                continue
+
+            if not found_first_section:
+                header_lines.append(line.rstrip("\n"))
+                continue
+
+            if current_section is None:
+                continue
+
+            if stripped == "":
+                continue
+
+            if stripped.startswith("#"):
+                continue
+
+            sections[current_section].append(line.rstrip("\n"))
+
+        counts = parse_header_counts(header_lines)
+        box = parse_box(header_lines)
+
+        return {
+            "filename": str(filename),
+            "header_lines": header_lines,
+            "sections": sections,
+            "counts": counts,
+            "box": box,
+        }
+
+    def parse_header_counts(header_lines):
+        patterns = {
+            "atoms": r"^\s*(\d+)\s+atoms\b",
+            "bonds": r"^\s*(\d+)\s+bonds\b",
+            "angles": r"^\s*(\d+)\s+angles\b",
+            "dihedrals": r"^\s*(\d+)\s+dihedrals\b",
+            "impropers": r"^\s*(\d+)\s+impropers\b",
+            "atom_types": r"^\s*(\d+)\s+atom\s+types\b",
+            "bond_types": r"^\s*(\d+)\s+bond\s+types\b",
+            "angle_types": r"^\s*(\d+)\s+angle\s+types\b",
+            "dihedral_types": r"^\s*(\d+)\s+dihedral\s+types\b",
+            "improper_types": r"^\s*(\d+)\s+improper\s+types\b",
+        }
+
+        counts = {key: 0 for key in patterns}
+
+        for line in header_lines:
+            for key, pat in patterns.items():
+                m = re.search(pat, line)
+                if m:
+                    counts[key] = int(m.group(1))
+
+        return counts
+
+    def parse_box(header_lines):
+        box = {
+            "xlo": None,
+            "xhi": None,
+            "ylo": None,
+            "yhi": None,
+            "zlo": None,
+            "zhi": None,
+        }
+
+        for line in header_lines:
+            parts = line.split()
+            if len(parts) >= 4:
+                if parts[2] == "xlo" and parts[3] == "xhi":
+                    box["xlo"] = float(parts[0])
+                    box["xhi"] = float(parts[1])
+                elif parts[2] == "ylo" and parts[3] == "yhi":
+                    box["ylo"] = float(parts[0])
+                    box["yhi"] = float(parts[1])
+                elif parts[2] == "zlo" and parts[3] == "zhi":
+                    box["zlo"] = float(parts[0])
+                    box["zhi"] = float(parts[1])
+
+        return box
+
+    def count_nonempty(lines):
+        return sum(1 for line in lines if strip_comment(line))
+
+    def max_first_int(lines):
+        max_val = 0
+        for line in lines:
+            clean = strip_comment(line)
+            if not clean:
+                continue
+            parts = clean.split()
+            if len(parts) > 0:
+                max_val = max(max_val, int(parts[0]))
+        return max_val
+
+    def offset_coeff_line(line, type_offset):
+        body, comment = split_comment(line)
+        parts = body.split()
+        if not parts:
+            return None
+
+        parts[0] = str(int(parts[0]) + type_offset)
+        return " ".join(parts) + comment
+
+    def offset_atom_line(line, atom_offset, mol_offset, atom_type_offset):
+        body, comment = split_comment(line)
+        parts = body.split()
+        if len(parts) < 3:
+            raise ValueError(f"Atom line has fewer than 3 columns: {line}")
+
+        parts[0] = str(int(parts[0]) + atom_offset)
+        parts[1] = str(int(parts[1]) + mol_offset)
+        parts[2] = str(int(parts[2]) + atom_type_offset)
+
+        return " ".join(parts) + comment
+
+    def offset_velocity_line(line, atom_offset):
+        body, comment = split_comment(line)
+        parts = body.split()
+        if len(parts) < 4:
+            raise ValueError(f"Velocity line has fewer than 4 columns: {line}")
+
+        parts[0] = str(int(parts[0]) + atom_offset)
+        return " ".join(parts) + comment
+
+    def offset_topology_line(line, id_offset, type_offset, atom_offset, n_atoms_in_topology):
+        body, comment = split_comment(line)
+        parts = body.split()
+
+        expected_min_cols = 2 + n_atoms_in_topology
+        if len(parts) < expected_min_cols:
+            raise ValueError(
+                f"Topology line has fewer than {expected_min_cols} columns: {line}"
+            )
+
+        parts[0] = str(int(parts[0]) + id_offset)
+        parts[1] = str(int(parts[1]) + type_offset)
+
+        for i in range(n_atoms_in_topology):
+            atom_col = 2 + i
+            parts[atom_col] = str(int(parts[atom_col]) + atom_offset)
+
+        return " ".join(parts) + comment
+
+    parsed_files = [parse_data_file(fname) for fname in lammps_array_in]
+
+    combined = {name: [] for name in section_names}
+
+    atom_offset = 0
+    mol_offset = 0
+
+    bond_offset = 0
+    angle_offset = 0
+    dihedral_offset = 0
+    improper_offset = 0
+
+    atom_type_offset = 0
+    bond_type_offset = 0
+    angle_type_offset = 0
+    dihedral_type_offset = 0
+    improper_type_offset = 0
+
+    total_atoms = 0
+    total_bonds = 0
+    total_angles = 0
+    total_dihedrals = 0
+    total_impropers = 0
+
+    total_atom_types = 0
+    total_bond_types = 0
+    total_angle_types = 0
+    total_dihedral_types = 0
+    total_improper_types = 0
+
+    for file_index, data in enumerate(parsed_files):
+        sections = data["sections"]
+
+        use_atoms = include_atoms[file_index]
+        use_velocities = include_velocities[file_index] and use_atoms
+
+        current_atom_offset = atom_offset
+        current_mol_offset = mol_offset
+
+        current_bond_offset = bond_offset
+        current_angle_offset = angle_offset
+        current_dihedral_offset = dihedral_offset
+        current_improper_offset = improper_offset
+
+        current_atom_type_offset = atom_type_offset
+        current_bond_type_offset = bond_type_offset
+        current_angle_type_offset = angle_type_offset
+        current_dihedral_type_offset = dihedral_type_offset
+        current_improper_type_offset = improper_type_offset
+
+        type_offsets = {
+            "atom_type": current_atom_type_offset,
+            "bond_type": current_bond_type_offset,
+            "angle_type": current_angle_type_offset,
+            "dihedral_type": current_dihedral_type_offset,
+            "improper_type": current_improper_type_offset,
+        }
+
+        # Always append type/coefficient sections.
+        for section, type_key in coeff_sections.items():
+            offset = type_offsets[type_key]
+            for line in sections[section]:
+                clean = strip_comment(line)
+                if clean:
+                    combined[section].append(offset_coeff_line(line, offset))
+
+        if use_atoms:
+            for line in sections["Atoms"]:
+                clean = strip_comment(line)
+                if clean:
+                    combined["Atoms"].append(
+                        offset_atom_line(
+                            line,
+                            current_atom_offset,
+                            current_mol_offset,
+                            current_atom_type_offset,
+                        )
+                    )
+
+            if use_velocities:
+                for line in sections["Velocities"]:
+                    clean = strip_comment(line)
+                    if clean:
+                        combined["Velocities"].append(
+                            offset_velocity_line(line, current_atom_offset)
+                        )
+
+            # Append topology sections only when atoms are included.
+            for section, info in topology_sections.items():
+                topology_name, type_key, n_atoms_in_topology = info
+
+                if topology_name == "bond":
+                    id_offset = current_bond_offset
+                elif topology_name == "angle":
+                    id_offset = current_angle_offset
+                elif topology_name == "dihedral":
+                    id_offset = current_dihedral_offset
+                elif topology_name == "improper":
+                    id_offset = current_improper_offset
+                else:
+                    raise RuntimeError("Unknown topology type.")
+
+                type_offset = type_offsets[type_key]
+
+                for line in sections[section]:
+                    clean = strip_comment(line)
+                    if clean:
+                        combined[section].append(
+                            offset_topology_line(
+                                line,
+                                id_offset,
+                                type_offset,
+                                current_atom_offset,
+                                n_atoms_in_topology,
+                            )
+                        )
+
+        # Update type offsets.
+        n_atom_types = max_first_int(sections["Masses"])
+        n_bond_types = max_first_int(sections["Bond Coeffs"])
+        n_angle_types = max_first_int(sections["Angle Coeffs"])
+        n_dihedral_types = max_first_int(sections["Dihedral Coeffs"])
+        n_improper_types = max_first_int(sections["Improper Coeffs"])
+
+        atom_type_offset += n_atom_types
+        bond_type_offset += n_bond_types
+        angle_type_offset += n_angle_types
+        dihedral_type_offset += n_dihedral_types
+        improper_type_offset += n_improper_types
+
+        total_atom_types += n_atom_types
+        total_bond_types += n_bond_types
+        total_angle_types += n_angle_types
+        total_dihedral_types += n_dihedral_types
+        total_improper_types += n_improper_types
+
+        if use_atoms:
+            n_atoms = count_nonempty(sections["Atoms"])
+            n_bonds = count_nonempty(sections["Bonds"])
+            n_angles = count_nonempty(sections["Angles"])
+            n_dihedrals = count_nonempty(sections["Dihedrals"])
+            n_impropers = count_nonempty(sections["Impropers"])
+
+            atom_offset += n_atoms
+            bond_offset += n_bonds
+            angle_offset += n_angles
+            dihedral_offset += n_dihedrals
+            improper_offset += n_impropers
+
+            total_atoms += n_atoms
+            total_bonds += n_bonds
+            total_angles += n_angles
+            total_dihedrals += n_dihedrals
+            total_impropers += n_impropers
+
+            # Molecule offset is taken from max molecule ID in this file.
+            max_mol_id = 0
+            for line in sections["Atoms"]:
+                clean = strip_comment(line)
+                if not clean:
+                    continue
+                parts = clean.split()
+                if len(parts) >= 2:
+                    max_mol_id = max(max_mol_id, int(parts[1]))
+
+            mol_offset += max_mol_id
+
+    # Determine output box as the min/max envelope of all input boxes.
+    xlo_values = []
+    xhi_values = []
+    ylo_values = []
+    yhi_values = []
+    zlo_values = []
+    zhi_values = []
+
+    for data in parsed_files:
+        box = data["box"]
+        if box["xlo"] is not None:
+            xlo_values.append(box["xlo"])
+            xhi_values.append(box["xhi"])
+        if box["ylo"] is not None:
+            ylo_values.append(box["ylo"])
+            yhi_values.append(box["yhi"])
+        if box["zlo"] is not None:
+            zlo_values.append(box["zlo"])
+            zhi_values.append(box["zhi"])
+
+    if xlo_values:
+        xlo, xhi = min(xlo_values), max(xhi_values)
+    else:
+        xlo, xhi = 0.0, 1.0
+
+    if ylo_values:
+        ylo, yhi = min(ylo_values), max(yhi_values)
+    else:
+        ylo, yhi = 0.0, 1.0
+
+    if zlo_values:
+        zlo, zhi = min(zlo_values), max(zhi_values)
+    else:
+        zlo, zhi = 0.0, 1.0
+
+    def write_section(f, name, lines):
+        if len(lines) == 0:
+            return
+
+        f.write(f"\n{name}\n\n")
+        for line in lines:
+            f.write(f"{line}\n")
+
+    with open(lammps_out, "w") as f:
+        f.write("LAMMPS data file combined by combine_data_files\n\n")
+
+        f.write(f"{total_atoms} atoms\n")
+        f.write(f"{total_bonds} bonds\n")
+        f.write(f"{total_angles} angles\n")
+        f.write(f"{total_dihedrals} dihedrals\n")
+        f.write(f"{total_impropers} impropers\n\n")
+
+        f.write(f"{total_atom_types} atom types\n")
+        f.write(f"{total_bond_types} bond types\n")
+        f.write(f"{total_angle_types} angle types\n")
+        f.write(f"{total_dihedral_types} dihedral types\n")
+        f.write(f"{total_improper_types} improper types\n\n")
+
+        f.write(f"{xlo:.8f} {xhi:.8f} xlo xhi\n")
+        f.write(f"{ylo:.8f} {yhi:.8f} ylo yhi\n")
+        f.write(f"{zlo:.8f} {zhi:.8f} zlo zhi\n")
+
+        write_section(f, "Masses", combined["Masses"])
+        write_section(f, "Pair Coeffs", combined["Pair Coeffs"])
+        write_section(f, "Bond Coeffs", combined["Bond Coeffs"])
+        write_section(f, "Angle Coeffs", combined["Angle Coeffs"])
+        write_section(f, "Dihedral Coeffs", combined["Dihedral Coeffs"])
+        write_section(f, "Improper Coeffs", combined["Improper Coeffs"])
+
+        write_section(f, "Atoms", combined["Atoms"])
+
+        if len(combined["Velocities"]) > 0:
+            write_section(f, "Velocities", combined["Velocities"])
+
+        write_section(f, "Bonds", combined["Bonds"])
+        write_section(f, "Angles", combined["Angles"])
+        write_section(f, "Dihedrals", combined["Dihedrals"])
+        write_section(f, "Impropers", combined["Impropers"])
 
 
 def get_flucuating_prop(file_in, property, start=0, end=np.inf):
