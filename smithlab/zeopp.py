@@ -933,7 +933,7 @@ def build_bottleneck_merge_tree(vals, meta, min_radius=0.0, periodic=True):
 
     shape = vals.shape
     flat = np.asarray(vals, dtype=np.float32).ravel()
-    eligible = np.flatnonzero(flat >= min_radius)
+    eligible = np.flatnonzero(flat >= min_radius)  # return indices of non-zero elements
 
     if eligible.size == 0:
         return {
@@ -945,13 +945,16 @@ def build_bottleneck_merge_tree(vals, meta, min_radius=0.0, periodic=True):
             "periodic": bool(periodic),
         }
 
-    # Descending distance
-    #
+    # Radius sweep must start from larger r first
     # Equal-valued voxels are processed together as a plateau.
-    order_local = np.argsort(flat[eligible], kind="stable")[::-1]
-    order = eligible[order_local]
-    sorted_values = flat[order]
-    N = flat.size
+    # eligible       = [2, 5, 8]
+    # flat[eligible] = [1.2, 3.0, 2.0]
+    # order          = [5, 8, 2]
+    # sorted_values  = [3.0, 2.0, 1.2]
+    order_local = np.argsort(flat[eligible], kind="stable")[::-1]  # voxel positions in descending order
+    order = eligible[order_local]  # converting back to flat grid indices
+    sorted_values = flat[order]  # corresponding distances in descending oder
+    N = flat.size  # total number of voxels in the grid including ineligible ones
 
     # -1 means voxel has not yet entered the superlevel set
     parent = np.full(N, -1, dtype=np.int64)
@@ -960,12 +963,15 @@ def build_bottleneck_merge_tree(vals, meta, min_radius=0.0, periodic=True):
     # older superlevel component.
     peak_for_root = np.full(N, -1, dtype=np.int32)
 
-    peak_radius = []
-    peak_index = []
-    death_radius = []
-    elder_cavity = []
-    death_index = []
-    merge_throats = []
+    # parent[i] tells us which connected region voxel i belongs to
+    # peak_for_root[root] tells us which cavity branch that region represents in the merge tree
+
+    peak_radius = []  # Distance value at which the cavity branch appears
+    peak_index = []  # Flat grid index of its peak
+    death_radius = []  # Threshold where that branch merges into an older branch
+    elder_cavity = []  # ID of the branch it merges into
+    death_index = []  # Grid index associated with that merge
+    merge_throats = []  # Records of the merge events and their bottlenecks
 
     def find_voxel(x):
         root = x
@@ -989,40 +995,30 @@ def build_bottleneck_merge_tree(vals, meta, min_radius=0.0, periodic=True):
         parent[ra] = rb
         return rb
 
-    # --------------------------------------------------------
     # Process one exact distance level at a time
-    # --------------------------------------------------------
-
     start = 0
 
     while start < len(order):
+        # sorted_values = [4.0, 4.0, 4.0, 2.5, 1.0] then start=0, end=3, t=4.0
         t = sorted_values[start]
         end = start + 1
 
         while (end < len(order) and sorted_values[end] == t):
             end += 1
 
-        batch = order[start:end]
+        batch = order[start:end]  # flat grid indices of every voxel on the plateau
+        parent[batch] = batch  # Activate whole plateau (voxel i has parent[i]=i)
 
-        # ----------------------------------------------------
-        # Activate whole plateau
-        # ----------------------------------------------------
-        parent[batch] = batch
-        # ----------------------------------------------------
         # Join equal-valued neighboring plateau voxels
-        # ----------------------------------------------------
-
+        # this will only join neighbors if they are of the same distance
         for idx in batch:
             idx = int(idx)
             for nbr in _neighbors6_flat(idx, shape, periodic=periodic):
                 if (parent[nbr] >= 0 and flat[nbr] == t):
                     union_plateau(idx, nbr)
-
-        # ----------------------------------------------------
+        
         # Find plateau components and which OLDER components
         # each plateau touches.
-        # ----------------------------------------------------
-
         touched = {}
         representative = {}
 
@@ -1039,23 +1035,19 @@ def build_bottleneck_merge_tree(vals, meta, min_radius=0.0, periodic=True):
                 if (parent[nbr] >= 0 and flat[nbr] > t):
                     touched[plateau_root].add(find_voxel(nbr))
 
-        # ----------------------------------------------------
-        # Interpret each plateau:
-        #
-        # 0 older neighbors -> new cavity maximum
-        # 1 older component -> ordinary growth
-        # >1 older components -> bottleneck / merge
-        # ----------------------------------------------------
+        # So a plateau component could have:
+        # 0 older regions touching it: it may start a new cavity.
+        # 1 older region: it extends that cavity.
+        # 2 or more older regions: it connects them at bottleneck radius t.
 
         for plateau_root in representative:
-            # Roots may have changed if an earlier plateau at the
-            # same value merged some older components.
+            # Roots may have changed if an earlier plateau at the same value merged some older components.
+            # For example, suppose this plateau initially touched older regions A and B.
+            # If an earlier plateau component at the same radius already connected A and B, both now resolve to one root.
+            # older_roots has one entry, so this component should not record a second merge between them.
             older_roots = {find_voxel(r) for r in touched[plateau_root]}
 
-            # -----------------------------------------------
             # New cavity
-            # -----------------------------------------------
-
             if len(older_roots) == 0:
                 cid = len(peak_radius)
                 peak_radius.append(float(t))
@@ -1065,23 +1057,21 @@ def build_bottleneck_merge_tree(vals, meta, min_radius=0.0, periodic=True):
                 death_index.append(None)
                 peak_for_root[plateau_root] = cid
                 continue
-            # -----------------------------------------------
+
             # Plateau simply grows one component
-            # -----------------------------------------------
             if len(older_roots) == 1:
                 root = next(iter(older_roots))
                 parent[plateau_root] = root
                 continue
-            # -----------------------------------------------
-            # Several components merge:
-            # choose the oldest/highest cavity as survivor.
-            # -----------------------------------------------
+
+            # Several components merge: choose the oldest/highest cavity as survivor.
             def survivor_key(root):
                 cid = int(peak_for_root[root])
                 # Higher maximum survives.
                 # Cavity ID provides deterministic tie breaking.
                 return (peak_radius[cid], -cid)
 
+            # this is the case where len(older_roots) >= 2 and so a throat needs to be determined
             survivor = max(older_roots, key=survivor_key)
             survivor_cid = int(peak_for_root[survivor])
             throat_idx = representative[plateau_root]
@@ -1089,16 +1079,17 @@ def build_bottleneck_merge_tree(vals, meta, min_radius=0.0, periodic=True):
             throat_xyz = _ijk_to_cart(throat_ijk, meta)
 
             # Every other component dies at this saddle.
+            # Need to record its properties as it died
             for root in older_roots:
                 if root == survivor:
                     continue
                 child_cid = int(peak_for_root[root])
-                Ri = peak_radius[child_cid]
-                Rj = peak_radius[survivor_cid]
-                Rt = float(t)
+                Ri = peak_radius[child_cid]  # loosing cavity's peak radius
+                Rj = peak_radius[survivor_cid]  # survivor's peak radius
+                Rt = float(t)  # Radius at which they connect
                 denom = min(Ri, Rj)
-                beta = (Rt / denom if denom > 0 else np.nan)
-                persistence = (Ri - Rt)
+                beta = (Rt / denom if denom > 0 else np.nan)  # throat cavity relative to loosing cavities peak
+                persistence = (Ri - Rt)  # drop from peak radius to merge radius
                 death_radius[child_cid] = Rt
                 elder_cavity[child_cid] = survivor_cid
                 death_index[child_cid] = throat_idx
@@ -1116,14 +1107,11 @@ def build_bottleneck_merge_tree(vals, meta, min_radius=0.0, periodic=True):
                     "position": throat_xyz,
                 })
 
-                # Merge losing component into survivor
-                parent[root] = survivor
-            # Plateau belongs to surviving component
-            parent[plateau_root] = survivor
+                parent[root] = survivor  # Merge losing component into survivor
+            parent[plateau_root] = survivor  # Plateau belongs to surviving component
         start = end
-    # --------------------------------------------------------
+
     # Construct cavity output
-    # --------------------------------------------------------
     cavities = []
 
     for cid, radius in enumerate(peak_radius):
