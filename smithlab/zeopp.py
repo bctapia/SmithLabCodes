@@ -383,6 +383,15 @@ def cube2npy(cube_in, npy_out, meta_out=None):
         Grid/cell information.
     """
 
+    # Line 1:  comment
+    # Line 2:  comment
+    # Line 3:  number_of_atoms  origin_x  origin_y  origin_z
+    # Line 4:  nx  x_step_x  x_step_y  x_step_z
+    # Line 5:  ny  y_step_x  y_step_y  y_step_z
+    # Line 6:  nz  z_step_x  z_step_y  z_step_z
+    # Next number_of_atoms lines:  atomic_number  charge  atom_x  atom_y  atom_z
+    # Remaining lines:  nx × ny × nz grid values
+
     with open(cube_in, "r") as f:
         f.readline()
         f.readline()
@@ -445,7 +454,7 @@ def cube2npy(cube_in, npy_out, meta_out=None):
     vals = vals.reshape(tuple(n))
 
     # Full lattice vectors
-    cell = vox * n[:, None]
+    cell = vox * n[:, None]  # TODO: CONFIRM THIS. It may need to be vox * (n - 1)[:, None]
 
     meta = {
         "n": n,
@@ -595,18 +604,25 @@ def _merge_periodic_labels(labels, n_initial):
         wraps[i] = [wrap_a, wrap_b, wrap_c]
     """
 
+    # index zero is included as that means blocked points
+    # for now, each region is its own parent
     parent = np.arange(n_initial + 1, dtype=np.int64)
 
     periodic_edges = []
 
+    # collecting region labels that meet across each pair of opposite grid faces
     for axis in range(3):
+        # first and last planes
         lo = np.take(labels, 0, axis=axis).ravel()
         hi = np.take(labels, -1, axis=axis).ravel()
+        # need both sides to be accessible
         both = (lo > 0) & (hi > 0)
 
         if not np.any(both):
             continue
 
+        # makes pairs such as (first_face_label, second_face_label)
+        # If pairs are repeated, only one copy is kept
         pairs = np.unique(np.stack([lo[both], hi[both]], axis=1), axis=0)
 
         for lo_id, hi_id in pairs:
@@ -617,32 +633,39 @@ def _merge_periodic_labels(labels, n_initial):
             # moving +1 lattice image in this direction.
             periodic_edges.append((hi_id, lo_id, axis))
 
+            # two labels belong to the same periodic pore
             _union(parent, lo_id, hi_id)
 
     # Collapse union-find
+    # calls _find to the the final union-find root of every initial label
     roots = np.array([_find(parent, i) for i in range(n_initial + 1)], dtype=np.int64)
+    # gets the distinct root excluding zero which represent blocked points
     uniq = np.unique(roots[1:])
+    # counts the resulting periodic pores
     n = len(uniq)
+    # assigns those roots consecutive ids: 1,2,...,n
     remap = np.zeros(n_initial + 1, dtype=np.int32)
     remap[uniq] = np.arange(1, n + 1, dtype=np.int32)
+    # gives the new ID for every original label
     initial_to_periodic = remap[roots]
+    # replaces each grid point's original label with its periodic pore ID. Blocked points stay 0
     labels = initial_to_periodic[labels]
 
-    # Determine actual winding
+    # Determine actual winding (i.e., percolation)
     wraps_root = _detect_wrapping(n_initial, periodic_edges, roots)
     wraps = np.zeros((n + 1, 3), dtype=bool)
 
+    # maps roots to their final pore ID after periodic conditions are determined
     for root in uniq:
         pid = remap[root]
         wraps[pid] = wraps_root[root]
 
     return labels, n, wraps
 
+
 # ============================================================
 # 4. CONNECTED PORES + GLOBAL METRICS
 # ============================================================
-
-
 def find_pores(vals, meta, probe_radius, periodic=True):
     """
     Identify connected probe-accessible pores.
@@ -671,7 +694,13 @@ def find_pores(vals, meta, probe_radius, periodic=True):
     open_ = vals >= probe_radius
 
     # Face connectivity only
+    # sorting ccessible grid points into regions
     struct = ndimage.generate_binary_structure(rank=3, connectivity=1)
+    # labels is the same shape as struct, with numbering according to their pore
+    # open_:       labels:
+    # False True   0  1
+    # False True   0  1
+    # True  False  2  0
     labels, n_initial = ndimage.label(open_, structure=struct)
     labels = labels.astype(np.int32)
 
@@ -680,6 +709,7 @@ def find_pores(vals, meta, probe_radius, periodic=True):
     # --------------------------------------------------------
 
     if periodic and n_initial > 0:
+        # labels is the pore_id for each voxel, n is the number of pores, wraps_by_id is the percolation of each pore
         labels, n, wraps_by_id = _merge_periodic_labels(labels, n_initial)
     else:
         n = n_initial
@@ -688,7 +718,7 @@ def find_pores(vals, meta, probe_radius, periodic=True):
     # --------------------------------------------------------
     # Sort pore IDs by volume
     # --------------------------------------------------------
-
+    # counting the number of each pore_id, removing the blocked pores
     counts = np.bincount(labels.ravel(), minlength=n + 1)[1:]
 
     if n > 0:
