@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.optimize import minimize, curve_fit
@@ -379,23 +380,22 @@ def mcmd_isotherm(files_in, lammps_start, pol_density=None, mw=None, max_step=No
 
 def mcmd_iters(files_in, max_step=None):
     """
-    files_in is the Trials directory
+    files_in is the Trials directory.
     """
+    files_in = Path(files_in)
+
     pressure_array = np.array([])
     iter_array = []
     molec_array = []
     molec_std_array = []
     max_step_array = []
 
-    subdirs = [root for root, dirs, file in os.walk(files_in)]
+    subdirs = [files_in]
+    subdirs.extend(path for path in files_in.rglob("*") if path.is_dir())
 
     for subdir in subdirs:
-
-        head, tail = os.path.split(subdir)
-
-        pressure = None
         try:
-            pressure = float(tail)
+            pressure = float(subdir.name)
         except ValueError:
             continue
 
@@ -404,43 +404,41 @@ def mcmd_iters(files_in, max_step=None):
         molec_std_ind = np.array([])
         max_step_ind = np.array([])
 
-        res_folder = os.path.join(subdir, "results")
-        if os.path.exists(res_folder):
-            for file in os.listdir(res_folder):
+        res_folder = subdir / "results"
+        if not res_folder.is_dir():
+            continue
 
-                if file.endswith(".gcmc.prp"):
-                    iter_current = int(file.split(".")[0])
+        for result_file in res_folder.glob("*.gcmc.prp"):
+            iter_current = int(result_file.name.split(".")[0])
 
-                    result_file = os.path.join(res_folder, f"{iter_current}.gcmc.prp")
+            _, molec = get_param(result_file, "Nmols_2", max_step=max_step)
+            molec_avg, molec_std = avg_prop(molec)
 
-                    _, molec = get_param(result_file, "Nmols_2", max_step=max_step)
-                    molec_avg, molec_std = avg_prop(molec)
+            iter_ind = np.append(iter_ind, iter_current)
+            molec_ind = np.append(molec_ind, molec_avg)
+            molec_std_ind = np.append(molec_std_ind, molec_std)
 
-                    iter_ind = np.append(iter_ind, iter_current)
-                    molec_ind = np.append(molec_ind, molec_avg)
-                    molec_std_ind = np.append(molec_std_ind, molec_std)
+            max_step_ind_val = max_step if max_step else get_max_step(result_file)
+            max_step_ind = np.append(max_step_ind, max_step_ind_val)
 
-                    max_step_ind_val = max_step if max_step else get_max_step(result_file)
-                    max_step_ind = np.append(max_step_ind, max_step_ind_val)
+        iter_ind_idx = np.argsort(iter_ind)
+        iter_ind = iter_ind[iter_ind_idx]
+        molec_ind = molec_ind[iter_ind_idx]
+        molec_std_ind = molec_std_ind[iter_ind_idx]
+        max_step_ind = max_step_ind[iter_ind_idx]
 
-            iter_ind_idx = np.argsort(iter_ind)
-            iter_ind = iter_ind[iter_ind_idx]
-            molec_ind = molec_ind[iter_ind_idx]
-            molec_std_ind = molec_std_ind[iter_ind_idx]
-            max_step_ind = max_step_ind[iter_ind_idx]
+        pressure_array = np.append(pressure_array, pressure)
+        iter_array.append(iter_ind)
+        molec_array.append(molec_ind)
+        molec_std_array.append(molec_std_ind)
+        max_step_array.append(max_step_ind)
 
-            pressure_array = np.append(pressure_array, pressure)
-            iter_array.append(iter_ind)
-            molec_array.append(molec_ind)
-            molec_std_array.append(molec_std_ind)
-            max_step_array.append(max_step_ind)
-
-        pressure_array_idx = np.argsort(pressure_array)
-        pressure_array = pressure_array[pressure_array_idx]
-        iter_array = [iter_array[i] for i in pressure_array_idx]
-        molec_array = [molec_array[i] for i in pressure_array_idx]
-        molec_std_array = [molec_std_array[i] for i in pressure_array_idx]
-        max_step_array = [max_step_array[i] for i in pressure_array_idx]
+    pressure_array_idx = np.argsort(pressure_array)
+    pressure_array = pressure_array[pressure_array_idx]
+    iter_array = [iter_array[i] for i in pressure_array_idx]
+    molec_array = [molec_array[i] for i in pressure_array_idx]
+    molec_std_array = [molec_std_array[i] for i in pressure_array_idx]
+    max_step_array = [max_step_array[i] for i in pressure_array_idx]
 
     return pressure_array, iter_array, molec_array, molec_std_array, max_step_array
 

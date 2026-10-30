@@ -785,7 +785,8 @@ def find_pores(vals, meta, probe_radius, periodic=True):
 
     # Dimensional susceptibility [Angstrom^3]
     chi_volume = (np.sum(finite_volumes ** 2) / V_finite if V_finite > 0 else 0.0)
-
+    mean_volume = (np.mean(finite_volumes) if finite_volumes.size > 0 else 0.0)
+    D = chi_volume / mean_volume if mean_volume > 0 else 0.0
     # Dimensionless susceptibility:
     # chi* = chi / V_acc = sum(omega_i^2) / sum(omega_i)
     # over NONPERCOLATING clusters only.
@@ -809,6 +810,8 @@ def find_pores(vals, meta, probe_radius, periodic=True):
         "omega": omega,  # Per-pore arrays, sorted largest -> smallest
         "wraps": wraps,  # columns = a,b,c lattice directions
         "percolating": percolating,  # True if wraps in any dimension
+        "M_n": float(chi_volume),
+        "D": D,
     }
 
     return labels, stats
