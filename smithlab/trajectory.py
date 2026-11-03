@@ -421,178 +421,165 @@ def msd(
     origin_stride_ps=1.0,
     atom_selection=None,
     output_file="msd.csv",
+    remove_drift=True,
 ):
     """
-    Compute the mean-squared displacement (MSD) using multiple time origins.
+    Calculate whole-chain center-of-mass MSD within an NVT trajectory.
 
-    MSD(t) = <|r(t0+t)-r(t0)|^2>
+    MSD(tau) = <|R_i(t0 + tau) - R_i(t0)|^2>
 
-    Averaging is performed over both molecules and time origins.
+    Averages equally over chains and selected time origins.
 
-    Args:
-        data_file: LAMMPS DATA file.
-        dump_file: LAMMPS trajectory (coordinates should be unwrapped).
-        timestep_fs: MD timestep used in the simulation.
-        max_lag_ps: Maximum lag time to compute.
-        origin_stride_ps: Spacing between successive time origins.
-        atom_selection: MDAnalysis selection defining the molecules to analyze.
-                        (e.g. "type 11 12")
-        output_file: CSV output filename.
+    Requirements:
+        - One LAMMPS molecule ID per complete chain.
+        - Dump contains continuously unwrapped xu yu zu coordinates.
+        - Fixed simulation box and uniformly spaced trajectory frames.
+        - Coordinates in Angstrom.
+
+    Parameters:
+        timestep_fs: MD integration timestep, NOT the dump interval.
+        atom_selection: Selects chains to include. All atoms belonging
+                        to each selected chain are included in its COM.
+                        None includes every chain.
+        remove_drift: Remove mass-weighted collective translation.
+
+    Returns:
+        times_ps, msd_A2, n_origins
     """
 
-    print("Loading universe...")
+    if not np.isfinite(timestep_fs) or timestep_fs <= 0:
+        raise ValueError("timestep_fs must be finite and positive.")
+    if not np.isfinite(max_lag_ps) or max_lag_ps < 0:
+        raise ValueError("max_lag_ps must be finite and nonnegative.")
+    if not np.isfinite(origin_stride_ps) or origin_stride_ps <= 0:
+        raise ValueError("origin_stride_ps must be finite and positive.")
+
     u = mda.Universe(
         data_file,
         dump_file,
         topology_format="DATA",
         format="LAMMPSDUMP",
-        atom_style="id resid type charge x y z", # full
+        atom_style="id resid type charge x y z",
+        lammps_coordinate_convention="unwrapped",
+        dt=timestep_fs / 1000.0,
     )
 
-    print("===Topology Info===")
-    print("Atoms:", u.atoms.n_atoms)
-    print("Frames:", u.trajectory.n_frames)
-    print("===================")
+    try:
+        n_frames = len(u.trajectory)
 
-    if u.trajectory.n_frames < 2:
-        raise RuntimeError("Trajectory must contain at least two frames.")
+        if n_frames < 2:
+            raise ValueError("Trajectory must contain at least two frames.")
 
-    # ------------------------------------------
-    # Determine sampling interval
-    # ------------------------------------------
+        if atom_selection is None:
+            selected = u.atoms
+        else:
+            selected = u.select_atoms(atom_selection)
 
-    u.trajectory[0]
-    t0 = u.trajectory.time
-    u.trajectory[1]
-    t1 = u.trajectory.time
+        if selected.n_atoms == 0:
+            raise ValueError("The atom selection returned no atoms.")
 
-    dt_step = t1 - t0
-    dt_fs = dt_step * timestep_fs
-    dt_ps = dt_fs / 1000.0
+        # Expand the selection to complete chains.
+        chain_atoms = selected.residues.atoms
+        chains = chain_atoms.split("residue")
+        n_chains = len(chains)
 
-    # ------------------------------------------
-    # Molecule selection
-    # ------------------------------------------
+        if not np.all(
+            np.isfinite(chain_atoms.masses) & (chain_atoms.masses > 0)
+        ):
+            raise ValueError("All chain atoms must have valid positive masses.")
 
-    if atom_selection is not None:
-        sel = u.select_atoms(atom_selection)
-        molecules = sel.split("residue")
-        print(f"Computing MSD for {len(molecules)} molecules ({sel.n_atoms} atoms).")
-    else:
-        sel = u.select_atoms("all")
-        molecules = sel.split("residue")
-        print(f"Computing MSD for all {len(molecules)} molecules ({sel.n_atoms} atoms).")
-
-    assert np.all(sel.masses > 0), "Masses not loaded from DATA file"
-
-    n_frames = u.trajectory.n_frames
-    n_mol = len(molecules)
-
-    if n_mol == 0:
-        raise RuntimeError("No molecules found.")
-
-    # ------------------------------------------
-    # Lag settings
-    # ------------------------------------------
-
-    max_lag_req = int(round(max_lag_ps / dt_ps))
-    max_lag = min(max_lag_req, n_frames - 1)
-
-    origin_stride = max(1, int(round(origin_stride_ps / dt_ps)))
-
-    print(f"Frame spacing       : {dt_ps:.4f} ps")
-    print(f"Maximum lag         : {max_lag} frames ({max_lag*dt_ps:.2f} ps)")
-    print(f"Origin stride       : {origin_stride} frames ({origin_stride*dt_ps:.2f} ps)")
-
-    # ------------------------------------------
-    # Compute COM trajectory
-    # ------------------------------------------
-
-    print("Computing center-of-mass trajectories...")
-
-    com = np.zeros((n_frames, n_mol, 3), dtype=np.float64)
-
-    for iframe, ts in enumerate(u.trajectory):
-
-        for imol, mol in enumerate(molecules):
-            com[iframe, imol] = mol.center_of_mass()
-
-        if iframe % 500 == 0 and iframe > 0:
-            print(f"  Frame {iframe}/{n_frames}")
-
-    # ------------------------------------------
-    # Check for periodic boundary jumps
-    # ------------------------------------------
-
-    print("Checking COM continuity...")
-
-    dcom = com[1:] - com[:-1]
-
-    jumps = np.linalg.norm(dcom, axis=2)
-
-    max_jump = np.max(jumps)
-    mean_jump = np.mean(jumps)
-
-    print(f"Maximum single-frame COM displacement: {max_jump:.3f} Å")
-    print(f"Average single-frame COM displacement: {mean_jump:.3f} Å")
-
-    if max_jump > 10.0:
-        bad = np.argwhere(jumps > 10.0)
-
-        print("\nWARNING: Possible wrapped coordinates detected!")
-        print(f"Found {len(bad)} suspicious jumps.")
-
-        for frame, mol in bad[:10]:
-            print(
-                f"  Molecule {mol}, "
-                f"frame {frame}->{frame+1}, "
-                f"jump={jumps[frame,mol]:.2f} Å"
-            )
-
-        print(
-            "Check that LAMMPS dump contains xu yu zu "
-            "or apply an unwrapping transformation."
+        chain_masses = np.array(
+            [chain.masses.sum() for chain in chains],
+            dtype=np.float64,
         )
-    else:
-        print("COM trajectory appears continuous.")
 
-    # ------------------------------------------
-    # Compute MSD
-    # ------------------------------------------
+        com = np.empty((n_frames, n_chains, 3), dtype=np.float64)
+        steps = np.empty(n_frames, dtype=np.int64)
 
-    print("Computing MSD...")
+        u.trajectory[0]
+        reference_box = u.trajectory.ts.triclinic_dimensions.copy()
 
-    msd_vals = np.zeros(max_lag + 1)
-    n_origins = np.zeros(max_lag + 1, dtype=int)
+        print(f"Chains: {n_chains}")
+        print(f"Frames: {n_frames}")
+        print("Computing unwrapped chain COM positions...")
+
+        for iframe, ts in enumerate(u.trajectory):
+            steps[iframe] = int(ts.data["step"])
+
+            if not np.allclose(
+                ts.triclinic_dimensions,
+                reference_box,
+                rtol=1e-6,
+                atol=1e-5,
+            ):
+                raise ValueError(
+                    "The box changes during this trajectory. "
+                    "This function assumes a fixed NVT box."
+                )
+
+            for ichain, chain in enumerate(chains):
+                com[iframe, ichain] = chain.center_of_mass()
+
+            if iframe > 0 and iframe % 500 == 0:
+                print(f"Processed {iframe}/{n_frames} frames")
+
+    finally:
+        u.trajectory.close()
+
+    if not np.all(np.isfinite(com)):
+        raise ValueError("Nonfinite chain COM coordinates encountered.")
+
+    # Determine frame spacing directly from LAMMPS timestep numbers.
+    step_intervals = np.diff(steps)
+
+    if np.any(step_intervals <= 0):
+        raise ValueError("LAMMPS timestep numbers must increase.")
+    if not np.all(step_intervals == step_intervals[0]):
+        raise ValueError("Trajectory frames must be uniformly spaced.")
+
+    dt_ps = float(step_intervals[0]) * timestep_fs / 1000.0
+
+    if remove_drift:
+        system_com = np.average(com, axis=1, weights=chain_masses)
+        com -= system_com[:, None, :]
+
+    max_lag = min(
+        int(np.floor(max_lag_ps / dt_ps)),
+        n_frames - 1,
+    )
+    origin_stride = max(
+        1,
+        int(round(origin_stride_ps / dt_ps)),
+    )
+
+    print(f"Frame spacing: {dt_ps:.6g} ps")
+    print(f"Maximum lag: {max_lag * dt_ps:.6g} ps")
+    print(f"Actual origin spacing: {origin_stride * dt_ps:.6g} ps")
+    print(f"System drift removed: {remove_drift}")
+
+    msd_vals = np.zeros(max_lag + 1, dtype=np.float64)
+    n_origins = np.zeros(max_lag + 1, dtype=np.int64)
 
     for lag in range(max_lag + 1):
-
         origins = np.arange(0, n_frames - lag, origin_stride)
 
         dr = com[origins + lag] - com[origins]
+        squared_displacements = np.sum(dr**2, axis=2)
 
-        sq = np.sum(dr**2, axis=2)
-
-        msd_vals[lag] = np.mean(sq)
+        msd_vals[lag] = squared_displacements.mean()
         n_origins[lag] = len(origins)
-
-        if lag % 200 == 0 and lag > 0:
-            print(f"  Lag {lag}/{max_lag}")
-
-    # ------------------------------------------
-    # Save
-    # ------------------------------------------
 
     times_ps = np.arange(max_lag + 1) * dt_ps
 
-    out = np.column_stack((times_ps, msd_vals, n_origins))
-
     np.savetxt(
         output_file,
-        out,
+        np.column_stack((times_ps, msd_vals, n_origins)),
         delimiter=",",
-        header="time_ps,MSD_A2,n_origins",
+        header="time_ps,chain_COM_MSD_A2,n_origins",
         comments="",
+        fmt=["%.10g", "%.10g", "%d"],
     )
 
-    print(f"Done. Wrote {output_file}")
+    print(f"Wrote {output_file}")
+
+    return times_ps, msd_vals, n_origins
